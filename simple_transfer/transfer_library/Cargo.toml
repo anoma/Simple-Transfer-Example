@@ -1,0 +1,18 @@
+[package]
+name = "transfer_library"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+risc0-zkvm = "3.0.3"
+arm = { git = "https://github.com/anoma/arm-risc0", branch = "xuyang/simple_transfer_app_v3", default-features = true }
+transfer_witness = { path = "../transfer_witness"}
+serde = { version = "1.0.219", features = ["derive"] }
+lazy_static = "1.5.0"
+hex = "0.4"
+rustler = {version = "0.36.2", optional = true}
+rand = "0.8"
+
+[features]
+default = []
+nif = ["arm/nif", "dep:rustler", "transfer_witness/nif"]
