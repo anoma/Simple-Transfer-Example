@@ -83,6 +83,9 @@ pub fn construct_mint_tx(
 
 #[test]
 fn simple_mint_test() {
+    // Load environment variables for Bonsai remote proving
+    dotenv::from_filename("env.secret").ok();
+    
     use crate::resource::{construct_ephemeral_resource, construct_persistent_resource};
     use arm::{
         authorization::{AuthorizationSigningKey, AuthorizationVerifyingKey},
@@ -129,10 +132,40 @@ fn simple_mint_test() {
         &created_auth_pk,
     );
 
-    // Fetch the permit signature from the somewhere
-    let permit_nonce = vec![7u8; 32];
-    let permit_deadline = vec![8u8; 32];
-    let permit_sig = vec![9u8; 65];
+    // TESTING PERMIT2
+    use crate::utils::generate_permit2_signature;
+    use alloy::primitives::{Address, U256};
+    
+    // Get private key from environment
+    let private_key_hex = std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set in env.secret");
+    let owner_private_key = hex::decode(&private_key_hex).expect("Invalid private key hex")
+        .try_into().expect("Private key must be 32 bytes");
+    
+    // Real Sepolia addresses
+    let permit2_contract_address = "0x000000000022D473030F116dDEE9F6B43aC78BA3".parse::<Address>().unwrap();
+    let erc20_token_address = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".parse::<Address>().unwrap(); // USDC Sepolia
+    let spender_address = Address::from_slice(&forwarder_addr);
+    let chain_id = 11155111; // Sepolia chain ID
+
+    let permit_nonce = U256::from(rand::random::<u64>()); // Use a random nonce
+    let permit_deadline = U256::from(u64::MAX); // A far-off deadline
+
+    // 1. Generate signature
+    let (r, s, v) = generate_permit2_signature(
+        owner_private_key,
+        permit2_contract_address,
+        erc20_token_address,
+        spender_address,
+        U256::from(quantity),
+        permit_nonce,
+        permit_deadline,
+        chain_id,
+    ).expect("Failed to generate permit signature");
+
+    let permit_sig = [r, s, v].concat();
+    // Convert U256 to Vec<u8> (32 bytes big endian)
+    let permit_nonce_bytes = permit_nonce.to_be_bytes_vec();
+    let permit_deadline_bytes = permit_deadline.to_be_bytes_vec();
 
     // Construct the mint transaction
     let tx_start_timer = std::time::Instant::now();
@@ -144,8 +177,8 @@ fn simple_mint_test() {
         forwarder_addr,
         token_addr,
         user_addr,
-        permit_nonce,
-        permit_deadline,
+        permit_nonce_bytes,
+        permit_deadline_bytes,
         permit_sig,
         created_resource,
         created_discovery_pk,

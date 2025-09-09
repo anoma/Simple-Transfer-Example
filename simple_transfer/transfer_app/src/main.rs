@@ -13,6 +13,8 @@ use tokio::runtime;
 mod resource;
 mod utils;
 mod transfer;
+mod mint;
+mod burn;
 mod eth;
 
 fn create_test_transfer() -> Transaction {

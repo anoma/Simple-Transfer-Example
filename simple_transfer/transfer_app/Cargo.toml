@@ -15,3 +15,7 @@ hex = "0.4"
 # evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", branch = "feature/crate"}
 evm_protocol_adapter_bindings = { path = "/Users/maurice/Heliax/evm-protocol-adapter/bindings" }
 tokio = "1.47.1"
+alloy = { version = "1.0.23", features = ["full"] }
+k256 = "0.13"
+sha3 = "0.10"
+dotenv = "0.15"
