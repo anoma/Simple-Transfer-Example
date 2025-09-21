@@ -18,7 +18,6 @@ pub fn construct_mint_tx(
     consumed_resource: Resource,
     latest_cm_tree_root: Vec<u32>,
     consumed_nf_key: NullifierKey,
-    consumed_discovery_pk: AffinePoint,
     forwarder_addr: Vec<u8>,
     token_addr: Vec<u8>,
     user_addr: Vec<u8>,
@@ -49,7 +48,6 @@ pub fn construct_mint_tx(
         consumed_resource,
         consumed_resource_path,
         consumed_nf_key,
-        consumed_discovery_pk,
         forwarder_addr.clone(),
         token_addr.clone(),
         user_addr.clone(),
@@ -63,7 +61,7 @@ pub fn construct_mint_tx(
     let created_resource_logic = TransferLogic::create_persistent_resource_logic(
         created_resource,
         created_resource_path,
-        created_discovery_pk,
+        &created_discovery_pk,
         created_encryption_pk,
     );
     let created_logic_proof = created_resource_logic.prove();
@@ -81,11 +79,43 @@ pub fn construct_mint_tx(
     tx
 }
 
+// pub async fn submit_mint_transaction(
+//     consumed_resource: Resource,
+//     latest_cm_tree_root: Vec<u32>,
+//     consumed_nf_key: NullifierKey,
+//     consumed_discovery_pk: AffinePoint,
+//     forwarder_addr: Vec<u8>,
+//     token_addr: Vec<u8>,
+//     user_addr: Vec<u8>,
+//     permit_nonce: Vec<u8>,
+//     permit_deadline: Vec<u8>,
+//     permit_sig: Vec<u8>,
+//     created_resource: Resource,
+//     created_discovery_pk: AffinePoint,
+//     created_encryption_pk: AffinePoint,
+// ) -> bool {
+//     let tx = construct_mint_tx(
+//         consumed_resource,
+//         latest_cm_tree_root,
+//         consumed_nf_key,
+//         consumed_discovery_pk,
+//         forwarder_addr,
+//         token_addr,
+//         user_addr,
+//         permit_nonce,
+//         permit_deadline,
+//         permit_sig,
+//         created_resource,
+//         created_discovery_pk,
+//         created_encryption_pk,
+//     ).await;
+    
+//     // Submit to ProtocolAdapter
+//     crate::eth::submit(tx).await
+// }
+
 #[test]
 fn simple_mint_test() {
-    // Load environment variables for Bonsai remote proving
-    dotenv::from_filename("env.secret").ok();
-    
     use crate::resource::{construct_ephemeral_resource, construct_persistent_resource};
     use arm::{
         authorization::{AuthorizationSigningKey, AuthorizationVerifyingKey},
@@ -132,40 +162,10 @@ fn simple_mint_test() {
         &created_auth_pk,
     );
 
-    // TESTING PERMIT2
-    use crate::utils::generate_permit2_signature;
-    use alloy::primitives::{Address, U256};
-    
-    // Get private key from environment
-    let private_key_hex = std::env::var("PRIVATE_KEY").expect("PRIVATE_KEY must be set in env.secret");
-    let owner_private_key = hex::decode(&private_key_hex).expect("Invalid private key hex")
-        .try_into().expect("Private key must be 32 bytes");
-    
-    // Real Sepolia addresses
-    let permit2_contract_address = "0x000000000022D473030F116dDEE9F6B43aC78BA3".parse::<Address>().unwrap();
-    let erc20_token_address = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".parse::<Address>().unwrap(); // USDC Sepolia
-    let spender_address = Address::from_slice(&forwarder_addr);
-    let chain_id = 11155111; // Sepolia chain ID
-
-    let permit_nonce = U256::from(rand::random::<u64>()); // Use a random nonce
-    let permit_deadline = U256::from(u64::MAX); // A far-off deadline
-
-    // 1. Generate signature
-    let (r, s, v) = generate_permit2_signature(
-        owner_private_key,
-        permit2_contract_address,
-        erc20_token_address,
-        spender_address,
-        U256::from(quantity),
-        permit_nonce,
-        permit_deadline,
-        chain_id,
-    ).expect("Failed to generate permit signature");
-
-    let permit_sig = [r, s, v].concat();
-    // Convert U256 to Vec<u8> (32 bytes big endian)
-    let permit_nonce_bytes = permit_nonce.to_be_bytes_vec();
-    let permit_deadline_bytes = permit_deadline.to_be_bytes_vec();
+    // Fetch the permit signature somewhere
+    let permit_nonce = vec![7u8; 32];
+    let permit_deadline = vec![8u8; 32];
+    let permit_sig = vec![9u8; 65];
 
     // Construct the mint transaction
     let tx_start_timer = std::time::Instant::now();
@@ -173,12 +173,11 @@ fn simple_mint_test() {
         consumed_resource,
         latest_cm_tree_root,
         consumed_nf_key,
-        created_discovery_pk,
         forwarder_addr,
         token_addr,
         user_addr,
-        permit_nonce_bytes,
-        permit_deadline_bytes,
+        permit_nonce,
+        permit_deadline,
         permit_sig,
         created_resource,
         created_discovery_pk,

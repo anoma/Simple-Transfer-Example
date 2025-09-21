@@ -19,12 +19,6 @@ pub struct SimpleTransferWitness {
     pub is_consumed: bool,
     pub existence_path: MerklePath,
     pub nf_key: Option<NullifierKey>,
-    // Obtain from the receiver for discovery_payload
-    pub discovery_pk: AffinePoint,
-    // randomly generated for discovery_payload
-    pub discovery_sk: SecretKey,
-    // randomly generated for discovery_payload
-    pub discovery_nonce: Vec<u8>,
     pub auth_info: Option<AuthorizationInfo>,
     pub encryption_info: Option<EncryptionInfo>,
     pub forwarder_info: Option<ForwarderInfo>,
@@ -46,6 +40,8 @@ pub struct EncryptionInfo {
     pub sender_sk: SecretKey,
     // randomly generated for persistent resource_ciphertext(12 bytes)
     pub encryption_nonce: Vec<u8>,
+    // The discovery ciphertext for the resource
+    pub discovery_cipher: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -80,47 +76,9 @@ impl LogicCircuit for SimpleTransferWitness {
         let root = self.existence_path.root(&tag);
         let root_bytes = words_to_bytes(&root);
 
-        // Generate discovery_payload
-        let discovery_payload = {
-            let cipher = Ciphertext::encrypt(
-                &vec![0u8],
-                &self.discovery_pk,
-                &self.discovery_sk,
-                self.discovery_nonce
-                    .as_slice()
-                    .try_into()
-                    .expect("Failed to convert discovery_nonce"),
-            );
-            let cipher_expirable_blob = ExpirableBlob {
-                blob: cipher.as_words(),
-                deletion_criterion: 1,
-            };
-            vec![cipher_expirable_blob]
-        };
-
-        // Generate external_payload and application_payload
-        let (resource_payload, external_payload, application_payload) = if self
-            .resource
-            .is_ephemeral
+        // Generate resource_payload and external_payload
+        let (discovery_payload, resource_payload, external_payload) = if self.resource.is_ephemeral
         {
-            // Generate resource_payload
-            let resource_payload = {
-                let encoded_resource = if self.is_consumed {
-                    // Consuming an ephemeral resource, include the nullifier key
-                    let nk = self.nf_key.as_ref().unwrap().inner();
-                    EvmResource::from(self.resource.clone()).encode_with_nk(nk)
-                } else {
-                    // Creating an ephemeral resource, do not include the nullifier key
-                    EvmResource::from(self.resource.clone()).encode()
-                };
-                let encoded_resource_expirable_blob = ExpirableBlob {
-                    blob: bytes_to_words(&encoded_resource),
-                    deletion_criterion: 1,
-                };
-
-                vec![encoded_resource_expirable_blob]
-            };
-
             // Check resource label: label = sha2(forwarder_addr, erc20_addr)
             let forwarder_addr = self
                 .forwarder_info
@@ -148,9 +106,6 @@ impl LogicCircuit for SimpleTransferWitness {
 
             let input = match call_type {
                 CallType::Unwrap => encode_transfer(erc20_addr, user_addr, self.resource.quantity),
-                // CallType::TransferFrom => {
-                //     encode_transfer_from(erc20_addr, user_addr, self.resource.quantity)
-                // }
                 CallType::Wrap => {
                     let permit = PermitTransferFrom::from_bytes(
                         erc20_addr,
@@ -195,15 +150,31 @@ impl LogicCircuit for SimpleTransferWitness {
             let external_payload = {
                 let call_data_expirable_blob = ExpirableBlob {
                     blob: bytes_to_words(&forwarder_call_data.encode()),
-                    deletion_criterion: 1,
+                    deletion_criterion: 0,
                 };
                 vec![call_data_expirable_blob]
             };
 
-            (resource_payload, external_payload, vec![])
+            // Empty discovery_payload and resource_payload
+            (vec![], vec![], external_payload)
         } else {
-            // Generate resource ciphertext
-            let resource_ciphertext = {
+            // Consume a persistent resource
+            if self.is_consumed {
+                let auth_pk = self.auth_info.as_ref().unwrap().auth_pk;
+                // check value_ref
+                assert_eq!(
+                    self.resource.value_ref,
+                    calculate_value_ref_from_auth(&auth_pk)
+                );
+                // Verify the authorization signature
+                assert!(auth_pk
+                    .verify(root_bytes, &self.auth_info.as_ref().unwrap().auth_sig)
+                    .is_ok());
+
+                // empty payloads for consumed persistent resource
+                (vec![], vec![], vec![])
+            } else {
+                // Generate resource ciphertext
                 let cipher = Ciphertext::encrypt(
                     &self.resource.to_bytes(),
                     &self.encryption_info.as_ref().unwrap().encryption_pk,
@@ -220,34 +191,32 @@ impl LogicCircuit for SimpleTransferWitness {
                     blob: cipher.as_words(),
                     deletion_criterion: 1,
                 };
-                vec![cipher_expirable_blob]
-            };
 
-            // Consume a persistent resource
-            if self.is_consumed {
-                let auth_pk = self.auth_info.as_ref().unwrap().auth_pk;
-                // check value_ref
-                assert_eq!(
-                    self.resource.value_ref,
-                    calculate_value_ref_from_auth(&auth_pk)
-                );
-                // Verify the authorization signature
-                assert!(auth_pk
-                    .verify(root_bytes, &self.auth_info.as_ref().unwrap().auth_sig)
-                    .is_ok());
+                // Generate discovery_payload
+                let cipher_discovery_blob = ExpirableBlob {
+                    blob: self
+                        .encryption_info
+                        .as_ref()
+                        .unwrap()
+                        .discovery_cipher
+                        .clone(),
+                    deletion_criterion: 1,
+                };
+
+                // return discovery_payload and resource_payload
+                (
+                    vec![cipher_discovery_blob],
+                    vec![cipher_expirable_blob],
+                    vec![],
+                )
             }
-
-            // Do nothing when creating a persistent resource;
-
-            // return empty external_payload and application_payload
-            (resource_ciphertext, vec![], vec![])
         };
 
         let app_data = AppData {
             resource_payload,
             discovery_payload,
             external_payload,
-            application_payload,
+            application_payload: vec![], // Empty application payload
         };
 
         LogicInstance {
@@ -266,20 +235,15 @@ impl SimpleTransferWitness {
         is_consumed: bool,
         existence_path: MerklePath,
         nf_key: Option<NullifierKey>,
-        discovery_pk: AffinePoint,
         auth_info: Option<AuthorizationInfo>,
         encryption_info: Option<EncryptionInfo>,
         forwarder_info: Option<ForwarderInfo>,
     ) -> Self {
-        let nonce: [u8; 12] = rand::random();
         Self {
             is_consumed,
             resource,
             existence_path,
             nf_key,
-            discovery_pk,
-            discovery_sk: SecretKey::random(),
-            discovery_nonce: nonce.to_vec(),
             auth_info,
             encryption_info,
             forwarder_info,
@@ -299,4 +263,29 @@ pub fn calculate_value_ref_calltype_user(call_type: CallType, user_addr: &[u8]) 
 
 pub fn calculate_label_ref(forwarder_add: &[u8], erc20_add: &[u8]) -> Vec<u8> {
     hash_bytes(&[forwarder_add, erc20_add].concat())
+}
+
+impl EncryptionInfo {
+    pub fn new(encryption_pk: AffinePoint, discovery_pk: &AffinePoint) -> Self {
+        let discovery_nonce: [u8; 12] = rand::random();
+        let discovery_sk = SecretKey::random();
+        let discovery_cipher = Ciphertext::encrypt(
+            &vec![0u8],
+            discovery_pk,
+            &discovery_sk,
+            discovery_nonce
+                .as_slice()
+                .try_into()
+                .expect("Failed to convert discovery_nonce"),
+        )
+        .as_words();
+        let sender_sk = SecretKey::random();
+        let encryption_nonce: [u8; 12] = rand::random();
+        Self {
+            encryption_pk,
+            sender_sk,
+            encryption_nonce: encryption_nonce.to_vec(),
+            discovery_cipher,
+        }
+    }
 }

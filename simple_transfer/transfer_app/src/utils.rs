@@ -13,12 +13,12 @@ pub fn authorize_the_action(
 }
 
 
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{Address, U256, keccak256};
 use alloy::sol_types::{Eip712Domain, SolStruct};
 use k256::ecdsa::SigningKey;
 use sha3::{Digest, Keccak256};
 
-// Define the Permit2 struct for EIP-712
+// Define the Permit2 structs for EIP-712
 alloy::sol! {
     #[derive(Debug)]
     struct PermitTransferFrom {
@@ -27,6 +27,17 @@ alloy::sol! {
         uint256 nonce;
         uint256 deadline;
         address spender;
+    }
+    
+    /// EIP-712 PermitWitnessTransferFrom struct
+    struct PermitWitnessTransferFrom {
+        address spender;
+        address token;
+        uint256 amount;
+        uint256 nonce;
+        uint256 deadline;
+        bytes32 witness; // This is the fixed function selector hash
+        bytes data; // Your custom data, i.e., the action_tree_root
     }
 }
 
@@ -38,6 +49,7 @@ pub fn generate_permit2_signature(
     amount: U256,
     nonce: U256,
     deadline: U256,
+    witness_data: Vec<u8>, // Action tree root as witness
     chain_id: u64,
 ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
     // 1. Create the domain separator
@@ -49,17 +61,19 @@ pub fn generate_permit2_signature(
         salt: None,
     };
 
-    // 2. Create the permit struct
-    let permit = PermitTransferFrom {
+    // 2. Create the permit witness struct with action tree root as witness
+    let permit_witness = PermitWitnessTransferFrom {
+        spender: spender_address,
         token: token_address,
         amount,
         nonce,
         deadline,
-        spender: spender_address,
+        witness: keccak256("witnessTransferFrom(address,address,uint256)"), // Fixed witness hash
+        data: witness_data.into(), // Action tree root as data
     };
 
     // 3. Calculate the EIP-712 hash
-    let struct_hash = permit.eip712_hash_struct();
+    let struct_hash = permit_witness.eip712_hash_struct();
     let domain_hash = domain.hash_struct();
     
     let mut hasher = Keccak256::new();
@@ -81,3 +95,4 @@ pub fn generate_permit2_signature(
 
     Ok((r_bytes.to_vec(), s_bytes.to_vec(), vec![v]))
 }
+

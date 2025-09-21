@@ -7,13 +7,12 @@ edition = "2021"
 serde = "1.0"
 transfer_witness = { path = "../transfer_witness" }
 transfer_library = { path = "../transfer_library"}
-arm = { git = "https://github.com/anoma/arm-risc0", branch = "xuyang/simple_transfer_app_v3",  default-features = false, features = ["transaction", "bonsai"] }
+arm = { git = "https://github.com/anoma/arm-risc0", branch = "jurevans/patch-keys-0.6.1",  default-features = false, features = ["transaction", "bonsai", "groth16_prover"] }
 rand = "0.8"
 risc0-zkvm = { version = "3.0.3", default-features = false, features = ["std", "unstable"] }
 lazy_static = "1.5.0"
 hex = "0.4"
-# evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", branch = "feature/crate"}
-evm_protocol_adapter_bindings = { path = "/Users/maurice/Heliax/evm-protocol-adapter/bindings" }
+evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", branch = "maurice/counter-example-stable"}
 tokio = "1.47.1"
 alloy = { version = "1.0.23", features = ["full"] }
 k256 = "0.13"

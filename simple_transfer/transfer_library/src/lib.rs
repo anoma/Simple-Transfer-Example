@@ -18,7 +18,7 @@ use transfer_witness::{
 pub const SIMPLE_TRANSFER_ELF: &[u8] = include_bytes!("../elf/simple-transfer-guest.bin");
 lazy_static! {
     pub static ref SIMPLE_TRANSFER_ID: Digest =
-        Digest::from_hex("5501e1b05aaed2066bb390dfc00ac3da8d899e2938d4ebc730cc5d3511514f08")
+        Digest::from_hex("f84f32182ddddbafd6c5f435578c3bb07b50a8014b2551ecebeb9916e2639cc5")
             .unwrap();
 }
 
@@ -34,7 +34,6 @@ impl TransferLogic {
         is_consumed: bool,
         existence_path: MerklePath,
         nf_key: Option<NullifierKey>,
-        discovery_pk: AffinePoint,
         auth_info: Option<AuthorizationInfo>,
         encryption_info: Option<EncryptionInfo>,
         forwarder_info: Option<ForwarderInfo>,
@@ -45,7 +44,6 @@ impl TransferLogic {
                 is_consumed,
                 existence_path,
                 nf_key,
-                discovery_pk,
                 auth_info,
                 encryption_info,
                 forwarder_info,
@@ -59,24 +57,15 @@ impl TransferLogic {
         nf_key: NullifierKey,
         auth_pk: AuthorizationVerifyingKey,
         auth_sig: AuthorizationSignature,
-        discovery_pk: AffinePoint,
-        encryption_pk: AffinePoint,
     ) -> Self {
         let auth_info = AuthorizationInfo { auth_pk, auth_sig };
-        let nonce: [u8; 12] = rand::random();
-        let encryption_info = EncryptionInfo {
-            encryption_pk,
-            sender_sk: SecretKey::random(),
-            encryption_nonce: nonce.to_vec(),
-        };
         Self::new(
             resource,
             true,
             existence_path,
             Some(nf_key),
-            discovery_pk,
             Some(auth_info),
-            Some(encryption_info),
+            None,
             None,
         )
     }
@@ -84,63 +73,26 @@ impl TransferLogic {
     pub fn create_persistent_resource_logic(
         resource: Resource,
         existence_path: MerklePath,
-        discovery_pk: AffinePoint,
+        discovery_pk: &AffinePoint,
         encryption_pk: AffinePoint,
     ) -> Self {
-        let nonce: [u8; 12] = rand::random();
-        let encryption_info = EncryptionInfo {
-            encryption_pk,
-            sender_sk: SecretKey::random(),
-            encryption_nonce: nonce.to_vec(), // nonce is not used for resource creation
-        };
+        let encryption_info = EncryptionInfo::new(encryption_pk, discovery_pk);
         Self::new(
             resource,
             false,
             existence_path,
             None,
-            discovery_pk,
             None,
             Some(encryption_info),
             None,
         )
     }
 
-    // #[allow(clippy::too_many_arguments)]
-    // pub fn mint_resource_logic(
-    //     resource: Resource,
-    //     existence_path: MerklePath,
-    //     nf_key: NullifierKey,
-    //     discovery_pk: AffinePoint,
-    //     forwarder_addr: Vec<u8>,
-    //     token_addr: Vec<u8>,
-    //     user_addr: Vec<u8>,
-    // ) -> Self {
-    //     let forwarder_info = ForwarderInfo {
-    //         call_type: CallType::TransferFrom,
-    //         forwarder_addr,
-    //         token_addr,
-    //         user_addr,
-    //         permit_info: None,
-    //     };
-
-    //     Self::new(
-    //         resource,
-    //         true,
-    //         existence_path,
-    //         Some(nf_key),
-    //         discovery_pk,
-    //         None,
-    //         None,
-    //         Some(forwarder_info),
-    //     )
-    // }
-
     #[allow(clippy::too_many_arguments)]
     pub fn mint_resource_logic_with_permit(
         resource: Resource,
         existence_path: MerklePath,
         nf_key: NullifierKey,
-        discovery_pk: AffinePoint,
         forwarder_addr: Vec<u8>,
         token_addr: Vec<u8>,
         user_addr: Vec<u8>,
@@ -166,7 +118,6 @@ impl TransferLogic {
             true,
             existence_path,
             Some(nf_key),
-            discovery_pk,
             None,
             None,
             Some(forwarder_info),
@@ -176,7 +127,6 @@ impl TransferLogic {
     pub fn burn_resource_logic(
         resource: Resource,
         existence_path: MerklePath,
-        discovery_pk: AffinePoint,
         forwarder_addr: Vec<u8>,
         token_addr: Vec<u8>,
         user_addr: Vec<u8>,
@@ -194,7 +144,6 @@ impl TransferLogic {
             false,
             existence_path,
             None,
-            discovery_pk,
             None,
             None,
             Some(forwarder_info),
