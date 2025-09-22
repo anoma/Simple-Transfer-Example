@@ -73,35 +73,6 @@ pub fn construct_transfer_tx(
     tx
 }
 
-// pub async fn submit_transfer_transaction(
-//     consumed_resource: Resource,
-//     consumed_resource_path: MerklePath,
-//     consumed_nf_key: NullifierKey,
-//     consumed_auth_pk: AuthorizationVerifyingKey,
-//     consumed_auth_sig: AuthorizationSignature,
-//     consumed_discovery_pk: AffinePoint,
-//     consumed_encryption_pk: AffinePoint,
-//     created_resource: Resource,
-//     created_discovery_pk: AffinePoint,
-//     created_encryption_pk: AffinePoint,
-// ) -> bool {
-//     let tx = construct_transfer_tx(
-//         consumed_resource,
-//         consumed_resource_path,
-//         consumed_nf_key,
-//         consumed_auth_pk,
-//         consumed_auth_sig,
-//         consumed_discovery_pk,
-//         consumed_encryption_pk,
-//         created_resource,
-//         created_discovery_pk,
-//         created_encryption_pk,
-//     );
-    
-//     // Submit to ProtocolAdapter
-//     crate::eth::submit(tx).await
-// }
-
 #[test]
 fn simple_transfer_test() {
     use crate::{resource::construct_persistent_resource, utils::authorize_the_action};

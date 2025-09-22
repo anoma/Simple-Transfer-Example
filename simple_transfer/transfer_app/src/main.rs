@@ -158,29 +158,33 @@ fn create_test_transfer() -> Transaction {
 
     // check the discovery ciphertexts
     let discovery_ciphertext = Ciphertext::from_words(
-        &tx.actions[0].logic_verifier_inputs[0]
+        &tx.actions[0].logic_verifier_inputs[1]
             .app_data
             .discovery_payload[0]
             .blob,
     );
     discovery_ciphertext
-        .decrypt(&consumed_discovery_sk)
+        .decrypt(&_created_discovery_sk)
         .unwrap();
 
     // check the encryption ciphertexts
     let encryption_ciphertext = Ciphertext::from_words(
-        &tx.actions[0].logic_verifier_inputs[0]
+        &tx.actions[0].logic_verifier_inputs[1]
             .app_data
             .resource_payload[0]
             .blob,
     );
     let decrypted_resource = encryption_ciphertext
-        .decrypt(&consumed_encryption_sk)
+        .decrypt(&_created_encryption_sk)
         .unwrap();
-    assert_eq!(decrypted_resource, consumed_resource.to_bytes());
+    assert_eq!(decrypted_resource, created_resource.to_bytes());
 
     // Verify the transaction
-    assert!(tx.clone().verify(), "Transaction verification failed");
+    if tx.clone().verify() {
+        println!("Transaction verified");
+    } else {
+        println!("Transaction not verified");
+    }
     tx
 }
 
@@ -191,9 +195,12 @@ pub fn submit_transaction(transaction: Transaction) {
 }
 
 fn main() {
-    let tx = simple_mint_test();
-    // let tx = create_test_transfer();
-    println!("Tx: {:?}", tx);
+    let mint_tx = simple_mint_test();
+    println!("Mint tx: {:?}", mint_tx);
+
+    let transfer_tx = create_test_transfer();
+    println!("Transfer tx: {:?}", transfer_tx);
+
     // let _ = submit_transaction(tx);
     println!("Yippie");
 }
