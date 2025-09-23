@@ -14,7 +14,7 @@ use alloy::primitives::{Address, B256, U256, address};
 use alloy::signers::local::PrivateKeySigner;
 use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signature;
 use std::env;
-
+use rand::Rng;
 use eth::{get_merkle_path, submit};
 
 mod resource;
@@ -34,13 +34,9 @@ pub struct SetUp {
     pub spender: Address,
 }
 
-// fn empty_leaf_hash() -> B256 {
-//     B256::from(hex!(
-//         "cc1d2f838445db7aec431df9ee8a871f40e7aa5e064fc056633ef8c60fab7b06"
-//     ))
-// }
-
 pub fn default_values() -> SetUp {
+    let mut rng = rand::thread_rng();
+    let random_nonce: u32 = rng.gen();
     SetUp {
         signer: env::var("PRIVATE_KEY")
             .expect("Couldn't read PRIVATE_KEY")
@@ -48,9 +44,9 @@ pub fn default_values() -> SetUp {
             .expect("should parse private key"),
         erc20: address!("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"), // USDC
         amount: U256::from(10),
-        nonce: U256::from(1),
+        nonce: U256::from(random_nonce),
         deadline: U256::from(1893456000),
-        spender: address!("0xc797A7708655b0e0907DABCb2246e07De91F7AF8"), // deployed for new logic-ref
+        spender: address!("0x09711e24A3748591624d2E575BB1bD87db87EFC8"), // deployed 2025-09-23
     }
 }
 
@@ -93,13 +89,16 @@ async fn simple_mint_test(
     data: &SetUp,
     keychain: &KeyChain
 ) -> (Transaction, Resource) {
+    let mut rng = rand::thread_rng();
+    let random_nonce: [u8; 32] = rng.gen();
+    
     let consumed_resource = construct_ephemeral_resource(
         &data.spender.to_vec(),
         &data.erc20.to_vec(),
         data.amount.try_into().unwrap(),
-        vec![4u8; 32], // nonce
+        random_nonce.to_vec(), // random 32-byte nonce
         keychain.nf_key.commit(),
-        vec![5u8; 32], // rand_seed
+        vec![7u8; 32], // rand_seed
         CallType::Wrap,
         &data.signer.address().to_vec(),
     );
@@ -192,10 +191,14 @@ async fn create_test_transfer(
     // let path: &[(Vec<u32>, bool)] = &[(bytes_to_words(empty_leaf_hash().as_slice()), is_left)];
     // let merkle_path = MerklePath::from_path(path);
 
-    let commitment_b256 = alloy::primitives::B256::from_slice(created_resource.commitment().as_bytes());
-    let merkle_path = get_merkle_path(commitment_b256).await;
-    println!("Merkle path: {:?}", merkle_path);
+    // Get Merkle proof for the consumed resource (the one being transferred)
+    println!("resource_to_transfer commitment: {:?}\n", resource_to_transfer.commitment());
+    let consumed_commitment_b256 = alloy::primitives::B256::from_slice(resource_to_transfer.commitment().as_bytes());
+    let merkle_path = get_merkle_path(consumed_commitment_b256).await.unwrap();
+    println!("Merkle path for resource_to_transfer: {:?}\n", merkle_path);
 
+    // let merkle_path = merkle_path.map_err(|e| format!("Failed to get merkle path: {}", e))?;
+    
     let keychain_clone = keychain.clone();
     let resource_to_transfer_clone = resource_to_transfer.clone();
     let created_resource_clone = created_resource.clone();
@@ -203,7 +206,7 @@ async fn create_test_transfer(
     let tx = tokio::task::spawn_blocking(move || {
         transfer::construct_transfer_tx(
             resource_to_transfer_clone,
-            merkle_path_clone.unwrap(), // TODO: handle unwrap error
+            merkle_path_clone,
             keychain_clone.nf_key.clone(),
             keychain_clone.auth_verifying_key(),
             auth_sig,
@@ -222,8 +225,8 @@ async fn create_test_transfer(
     tx
 }
 
-pub async fn submit_transaction(transaction: Transaction) {
-    let _ = submit(transaction).await;
+pub async fn submit_transaction(transaction: Transaction) -> bool {
+    submit(transaction).await
 }
 
 #[tokio::main]
@@ -233,13 +236,23 @@ async fn main() {
     let keychain: KeyChain = example_keychain();
 
     let (mint_tx, minted_resource) = simple_mint_test(&data, &keychain).await;
-    println!("Mint tx: {:?}", mint_tx);
-    println!("Minted resource: {:?}", minted_resource);
-    // let _ = submit_transaction(mint_tx).await;
+    println!("Mint tx: {:?}\n", mint_tx);
+    println!("Minted resource: {:?}\n", minted_resource);
+    
+    let mint_success = submit_transaction(mint_tx).await;
+    if !mint_success {
+        println!("Mint transaction failed, aborting...");
+        return;
+    }
+
+    // Wait for the mint transaction to be confirmed on-chain
+    println!("Waiting 60 seconds for mint transaction to be confirmed...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    println!("Done waiting, proceeding with transfer...");
 
     let transfer_tx = create_test_transfer(&data, &keychain, &minted_resource).await;
-    println!("Transfer tx: {:?}", transfer_tx);
-    // let _ = submit_transaction(transfer_tx).await;
+    println!("Transfer tx: {:?}\n", transfer_tx);
+    let _ = submit_transaction(transfer_tx).await;
 
     println!("Yippie");
 }

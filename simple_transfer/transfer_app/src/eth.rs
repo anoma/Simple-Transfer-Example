@@ -34,6 +34,16 @@ pub async fn get_merkle_path(
 ) -> Result<MerklePath, String> {
     let adapter = protocol_adapter();
 
+    // First, let's check the latest root to see if the tree has been updated
+    let latest_root = adapter
+        .latestRoot()
+        .call()
+        .await
+        .map_err(|e| format!("Failed to get latest root: {}", e))?;
+    
+    println!("Latest root: {:?}", latest_root);
+    println!("Looking for commitment: {:?}", commitment);
+
     let res = adapter
         .merkleProof(commitment)
         .call()
@@ -51,12 +61,12 @@ pub async fn get_merkle_path(
         })
         .collect();
 
-    let auth_path_array: [(Digest, bool); 32] = auth_path_vec.try_into()
-        .map_err(|_| format!("Failed to convert path to fixed-size array: expected 32 elements, got different length"))?;
-
-    let converted_path: [(Vec<u32>, bool); 32] = auth_path_array.map(|(digest, bool_val)| {
+    println!("Auth path length: {}", auth_path_vec.len());
+    
+    // Convert to the format expected by MerklePath::from_path
+    let converted_path: Vec<(Vec<u32>, bool)> = auth_path_vec.into_iter().map(|(digest, bool_val)| {
         (bytes_to_words(digest.as_bytes()), bool_val)
-    });
+    }).collect();
 
     Ok(MerklePath::from_path(&converted_path))
 }
