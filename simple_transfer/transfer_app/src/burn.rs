@@ -5,7 +5,6 @@ use arm::{
     compliance::ComplianceWitness,
     compliance_unit::ComplianceUnit,
     delta_proof::DeltaWitness,
-    encryption::AffinePoint,
     logic_proof::LogicProver,
     merkle_path::MerklePath,
     nullifier_key::NullifierKey,

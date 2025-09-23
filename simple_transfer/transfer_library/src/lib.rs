@@ -1,6 +1,6 @@
 use arm::{
     authorization::{AuthorizationSignature, AuthorizationVerifyingKey},
-    encryption::{AffinePoint, SecretKey},
+    encryption::AffinePoint,
     evm::CallType,
     logic_proof::LogicProver,
     merkle_path::MerklePath,

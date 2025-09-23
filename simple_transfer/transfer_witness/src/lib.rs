@@ -3,8 +3,11 @@ use arm::{
     authorization::{AuthorizationSignature, AuthorizationVerifyingKey},
     encryption::{AffinePoint, Ciphertext, SecretKey},
     evm::{
-        encode_permit_witness_transfer_from, encode_transfer, CallType, ForwarderCalldata,
-        PermitTransferFrom, Resource as EvmResource,
+        CallType, 
+        encode_permit_witness_transfer_from,
+        encode_transfer, 
+        ForwarderCalldata,
+        PermitTransferFrom
     },
     logic_instance::{AppData, ExpirableBlob, LogicInstance},
     merkle_path::MerklePath,
@@ -13,6 +16,7 @@ use arm::{
     utils::{bytes_to_words, hash_bytes, words_to_bytes},
 };
 use serde::{Deserialize, Serialize};
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SimpleTransferWitness {
     pub resource: Resource,

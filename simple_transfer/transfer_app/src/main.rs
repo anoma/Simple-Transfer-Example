@@ -3,22 +3,19 @@ use arm::{
     action_tree::MerkleTree,
     authorization::{AuthorizationSigningKey, AuthorizationVerifyingKey},
     compliance::INITIAL_ROOT,
-    encryption::{random_keypair, Ciphertext, AffinePoint, SecretKey},
+    encryption::{random_keypair, AffinePoint, SecretKey},
     evm::CallType,
-    merkle_path::MerklePath,
     nullifier_key::{NullifierKey, NullifierKeyCommitment},
     resource::Resource,
     transaction::Transaction,
-    utils::{bytes_to_words, words_to_bytes},
+    utils::{words_to_bytes},
 };
-use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signature;
 use alloy::primitives::{Address, B256, U256, address};
 use alloy::signers::local::PrivateKeySigner;
-use alloy::hex;
+use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signature;
 use std::env;
 
-use eth::submit;
-use tokio::runtime;
+use eth::{get_merkle_path, submit};
 
 mod resource;
 mod utils;
@@ -27,6 +24,7 @@ mod mint;
 mod burn;
 mod eth;
 
+#[derive(Clone)]
 pub struct SetUp {
     pub signer: PrivateKeySigner,
     pub erc20: Address,
@@ -36,11 +34,11 @@ pub struct SetUp {
     pub spender: Address,
 }
 
-fn empty_leaf_hash() -> B256 {
-    B256::from(hex!(
-        "cc1d2f838445db7aec431df9ee8a871f40e7aa5e064fc056633ef8c60fab7b06"
-    ))
-}
+// fn empty_leaf_hash() -> B256 {
+//     B256::from(hex!(
+//         "cc1d2f838445db7aec431df9ee8a871f40e7aa5e064fc056633ef8c60fab7b06"
+//     ))
+// }
 
 pub fn default_values() -> SetUp {
     SetUp {
@@ -57,6 +55,7 @@ pub fn default_values() -> SetUp {
 }
 
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct KeyChain {
     auth_signing_key: AuthorizationSigningKey,
     nf_key: NullifierKey,
@@ -90,7 +89,7 @@ fn example_keychain() -> KeyChain {
     }
 }
 
-fn simple_mint_test(
+async fn simple_mint_test(
     data: &SetUp,
     keychain: &KeyChain
 ) -> (Transaction, Resource) {
@@ -125,8 +124,7 @@ fn simple_mint_test(
     let created_cm = created_resource.commitment();
     let action_tree = MerkleTree::new(vec![consumed_nf, created_cm]);
 
-    let rt = runtime::Runtime::new().unwrap();
-    let permit_sig = rt.block_on(permit_witness_transfer_from_signature(
+    let permit_sig = permit_witness_transfer_from_signature(
         &data.signer,
         data.erc20,
         data.amount,
@@ -134,23 +132,28 @@ fn simple_mint_test(
         data.deadline,
         data.spender,
         B256::from_slice(words_to_bytes(action_tree.root().as_slice())), // Witness
-    ));
+    ).await;
 
-    // Construct the mint transaction
-    let tx = mint::construct_mint_tx(
-        consumed_resource,
-        latest_cm_tree_root,
-        keychain.nf_key.clone(),
-        data.spender.to_vec(),
-        data.erc20.to_vec(),
-        data.signer.address().to_vec(),
-        data.nonce.to_be_bytes_vec(),
-        data.deadline.to_be_bytes_vec(),
-        permit_sig.as_bytes().to_vec(),
-        created_resource.clone(),
-        keychain.discovery_pk,
-        keychain.encryption_pk
-    );
+    // Construct the mint transaction (run in blocking thread to avoid runtime conflicts)
+    let created_resource_clone = created_resource.clone();
+    let keychain_clone = keychain.clone();
+    let data_clone = data.clone();
+    let tx = tokio::task::spawn_blocking(move || {
+        mint::construct_mint_tx(
+            consumed_resource,
+            latest_cm_tree_root,
+            keychain_clone.nf_key.clone(),
+            data_clone.spender.to_vec(),
+            data_clone.erc20.to_vec(),
+            data_clone.signer.address().to_vec(),
+            data_clone.nonce.to_be_bytes_vec(),
+            data_clone.deadline.to_be_bytes_vec(),
+            permit_sig.as_bytes().to_vec(),
+            created_resource_clone,
+            keychain_clone.discovery_pk,
+            keychain_clone.encryption_pk
+        )
+    }).await.unwrap();
 
     // Verify the transaction
     if tx.clone().verify() {
@@ -161,7 +164,7 @@ fn simple_mint_test(
     (tx, created_resource)
 }
 
-fn create_test_transfer(
+async fn create_test_transfer(
     data: &SetUp,
     keychain: &KeyChain,
     resource_to_transfer: &Resource,
@@ -185,20 +188,30 @@ fn create_test_transfer(
     let auth_sig = authorize_the_action(&keychain.auth_signing_key, &action_tree);
 
     // Construct the transfer transaction
-    let is_left = false;
-    let path: &[(Vec<u32>, bool)] = &[(bytes_to_words(empty_leaf_hash().as_slice()), is_left)];
-    let merkle_path = MerklePath::from_path(path);
+    // let is_left = false;
+    // let path: &[(Vec<u32>, bool)] = &[(bytes_to_words(empty_leaf_hash().as_slice()), is_left)];
+    // let merkle_path = MerklePath::from_path(path);
 
-    let tx = transfer::construct_transfer_tx(
-        resource_to_transfer.clone(),
-        merkle_path.clone(),
-        keychain.nf_key.clone(),
-        keychain.auth_verifying_key(),
-        auth_sig,
-        created_resource.clone(),
-        keychain.discovery_pk,
-        keychain.encryption_pk,
-    );
+    let commitment_b256 = alloy::primitives::B256::from_slice(created_resource.commitment().as_bytes());
+    let merkle_path = get_merkle_path(commitment_b256).await;
+    println!("Merkle path: {:?}", merkle_path);
+
+    let keychain_clone = keychain.clone();
+    let resource_to_transfer_clone = resource_to_transfer.clone();
+    let created_resource_clone = created_resource.clone();
+    let merkle_path_clone = merkle_path.clone();
+    let tx = tokio::task::spawn_blocking(move || {
+        transfer::construct_transfer_tx(
+            resource_to_transfer_clone,
+            merkle_path_clone.unwrap(), // TODO: handle unwrap error
+            keychain_clone.nf_key.clone(),
+            keychain_clone.auth_verifying_key(),
+            auth_sig,
+            created_resource_clone,
+            keychain_clone.discovery_pk,
+            keychain_clone.encryption_pk,
+        )
+    }).await.unwrap();
 
     // Verify the transaction
     if tx.clone().verify() {
@@ -209,25 +222,24 @@ fn create_test_transfer(
     tx
 }
 
-pub fn submit_transaction(transaction: Transaction) {
-    let rt = runtime::Runtime::new().unwrap();
-
-    let _ = rt.block_on(async { submit(transaction).await });
+pub async fn submit_transaction(transaction: Transaction) {
+    let _ = submit(transaction).await;
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 
     let data: SetUp = default_values();
     let keychain: KeyChain = example_keychain();
 
-    let (mint_tx, minted_resource) = simple_mint_test(&data, &keychain);
+    let (mint_tx, minted_resource) = simple_mint_test(&data, &keychain).await;
     println!("Mint tx: {:?}", mint_tx);
     println!("Minted resource: {:?}", minted_resource);
-    let _ = submit_transaction(mint_tx);
+    // let _ = submit_transaction(mint_tx).await;
 
-    let transfer_tx = create_test_transfer(&data, &keychain, &minted_resource);
+    let transfer_tx = create_test_transfer(&data, &keychain, &minted_resource).await;
     println!("Transfer tx: {:?}", transfer_tx);
-    let _ = submit_transaction(transfer_tx);
+    // let _ = submit_transaction(transfer_tx).await;
 
     println!("Yippie");
 }
