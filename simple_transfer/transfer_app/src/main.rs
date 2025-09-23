@@ -59,6 +59,7 @@ pub struct KeyChain {
     discovery_pk: AffinePoint,
     encryption_sk: SecretKey,
     encryption_pk: AffinePoint,
+    evm_address: Address,
 }
 
 impl KeyChain {
@@ -71,17 +72,21 @@ impl KeyChain {
     }
 }
 
-fn example_keychain() -> KeyChain {
+fn create_keychain(evm_address: Address) -> KeyChain {
     let (discovery_sk, discovery_pk) = random_keypair();
     let (encryption_sk, encryption_pk) = random_keypair();
 
+    let auth_signing_key: AuthorizationSigningKey = AuthorizationSigningKey::new();
+    let nf_key: NullifierKey = NullifierKey::random_pair().0;
+
     KeyChain {
-        auth_signing_key: AuthorizationSigningKey::from_bytes(&vec![15u8; 32]),
-        nf_key: NullifierKey::from_bytes(&vec![13u8; 32]),
+        auth_signing_key,
+        nf_key,
         discovery_sk,
         discovery_pk,
         encryption_sk,
         encryption_pk,
+        evm_address,
     }
 }
 
@@ -165,10 +170,11 @@ async fn simple_mint_test(
 
 async fn create_test_transfer(
     data: &SetUp,
-    keychain: &KeyChain,
+    keychain_alice: &KeyChain,
+    keychain_bob: &KeyChain,
     resource_to_transfer: &Resource,
-) -> Transaction {
-    let consumed_nf = resource_to_transfer.nullifier(&keychain.nf_key).unwrap();
+) -> (Transaction, Resource) {
+    let consumed_nf = resource_to_transfer.nullifier(&keychain_alice.nf_key).unwrap();
     
     // Create the created resource data
     let created_resource = construct_persistent_resource(
@@ -176,15 +182,15 @@ async fn create_test_transfer(
         &data.erc20.to_vec(),     // token_addr
         data.amount.try_into().unwrap(),
         consumed_nf.as_bytes().to_vec(), // nonce
-        keychain.nullifier_key_commitment(),
+        keychain_bob.nullifier_key_commitment(),
         vec![7u8; 32], // rand_seed
-        &keychain.auth_verifying_key(),
+        &keychain_bob.auth_verifying_key(),
     );
     let created_cm = created_resource.commitment();
 
     // Get the authorization signature, it can be from external signing(e.g. wallet)
     let action_tree = MerkleTree::new(vec![consumed_nf, created_cm]);
-    let auth_sig = authorize_the_action(&keychain.auth_signing_key, &action_tree);
+    let auth_sig = authorize_the_action(&keychain_alice.auth_signing_key, &action_tree);
 
     // Construct the transfer transaction
     // let is_left = false;
@@ -199,7 +205,8 @@ async fn create_test_transfer(
 
     // let merkle_path = merkle_path.map_err(|e| format!("Failed to get merkle path: {}", e))?;
     
-    let keychain_clone = keychain.clone();
+    let keychain_alice_clone = keychain_alice.clone();
+    let keychain_bob_clone = keychain_bob.clone();
     let resource_to_transfer_clone = resource_to_transfer.clone();
     let created_resource_clone = created_resource.clone();
     let merkle_path_clone = merkle_path.clone();
@@ -207,12 +214,12 @@ async fn create_test_transfer(
         transfer::construct_transfer_tx(
             resource_to_transfer_clone,
             merkle_path_clone,
-            keychain_clone.nf_key.clone(),
-            keychain_clone.auth_verifying_key(),
+            keychain_alice_clone.nf_key.clone(),
+            keychain_alice_clone.auth_verifying_key(),
             auth_sig,
             created_resource_clone,
-            keychain_clone.discovery_pk,
-            keychain_clone.encryption_pk,
+            keychain_bob_clone.discovery_pk,
+            keychain_bob_clone.encryption_pk,
         )
     }).await.unwrap();
 
@@ -221,6 +228,64 @@ async fn create_test_transfer(
         println!("Transaction verified");
     } else {
         println!("Transaction not verified");
+    }
+    (tx, created_resource)
+}
+
+async fn create_test_burn(
+    data: &SetUp,
+    keychain: &KeyChain,
+    resource_to_burn: &Resource,
+) -> Transaction {
+    let consumed_nf = resource_to_burn.nullifier(&keychain.nf_key).unwrap();
+    
+    let created_resource = construct_ephemeral_resource(
+        &data.spender.to_vec(), // forwarder_addr
+        &data.erc20.to_vec(),     // token_addr
+        resource_to_burn.quantity.try_into().unwrap(),
+        consumed_nf.as_bytes().to_vec(), // nonce
+        keychain.nullifier_key_commitment(),
+        vec![8u8; 32], // rand_seed
+        CallType::Unwrap,
+        &keychain.evm_address.to_vec(),
+    );
+    let created_cm = created_resource.commitment();
+
+    // Get the authorization signature, it can be from external signing(e.g. wallet)
+    let action_tree = MerkleTree::new(vec![consumed_nf, created_cm]);
+    let auth_sig = authorize_the_action(&keychain.auth_signing_key, &action_tree);
+
+    // Construct the burn transaction
+    // Get Merkle proof for the consumed resource (the one being burned)
+    println!("resource_to_burn commitment: {:?}\n", resource_to_burn.commitment());
+    let consumed_commitment_b256 = alloy::primitives::B256::from_slice(resource_to_burn.commitment().as_bytes());
+    let merkle_path = get_merkle_path(consumed_commitment_b256).await.unwrap();
+    println!("Merkle path for resource_to_burn: {:?}\n", merkle_path);
+
+    let keychain_clone = keychain.clone();
+    let resource_to_burn_clone = resource_to_burn.clone();
+    let created_resource_clone = created_resource.clone();
+    let merkle_path_clone = merkle_path.clone();
+    let data_clone = data.clone();
+    let tx = tokio::task::spawn_blocking(move || {
+        burn::construct_burn_tx(
+            resource_to_burn_clone,
+            merkle_path_clone,
+            keychain_clone.nf_key.clone(),
+            keychain_clone.auth_verifying_key(),
+            auth_sig,
+            created_resource_clone,
+            data_clone.spender.to_vec(),
+            data_clone.erc20.to_vec(),
+            keychain_clone.evm_address.to_vec(),
+        )
+    }).await.unwrap();
+
+    // Verify the transaction
+    if tx.clone().verify() {
+        println!("Burn transaction verified");
+    } else {
+        println!("Burn transaction not verified");
     }
     tx
 }
@@ -233,26 +298,41 @@ pub async fn submit_transaction(transaction: Transaction) -> bool {
 async fn main() {
 
     let data: SetUp = default_values();
-    let keychain: KeyChain = example_keychain();
+    let keychain_alice: KeyChain = create_keychain(address!("0x26aBD8C363f6Aa7FC4db989Ba4F34E7Bd5573A16"));
+    let keychain_bob: KeyChain = create_keychain(address!("0x44B73CbC3C2E902cD0768854c2ff914DD44a325F"));
 
-    let (mint_tx, minted_resource) = simple_mint_test(&data, &keychain).await;
+    let (mint_tx, minted_resource) = simple_mint_test(&data, &keychain_alice).await;
     println!("Mint tx: {:?}\n", mint_tx);
     println!("Minted resource: {:?}\n", minted_resource);
     
     let mint_success = submit_transaction(mint_tx).await;
+    
+    // Wait for the mint transaction to be confirmed on-chain
     if !mint_success {
         println!("Mint transaction failed, aborting...");
         return;
     }
-
-    // Wait for the mint transaction to be confirmed on-chain
     println!("Waiting 60 seconds for mint transaction to be confirmed...");
     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     println!("Done waiting, proceeding with transfer...");
 
-    let transfer_tx = create_test_transfer(&data, &keychain, &minted_resource).await;
+    let (transfer_tx, transferred_resource) = create_test_transfer(&data, &keychain_alice, &keychain_bob, &minted_resource).await;
     println!("Transfer tx: {:?}\n", transfer_tx);
-    let _ = submit_transaction(transfer_tx).await;
+    let transfer_success = submit_transaction(transfer_tx).await;
+    
+    // Wait for the transfer transaction to be confirmed on-chain
+    if !transfer_success {
+        println!("Transfer transaction failed, aborting...");
+        return;
+    }
+    println!("Waiting 60 seconds for transfer transaction to be confirmed...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    println!("Done waiting, proceeding with burn...");
+
+    // Step 3: Burn the transferred resource
+    let burn_tx = create_test_burn(&data, &keychain_bob, &transferred_resource).await;
+    println!("Burn tx: {:?}\n", burn_tx);
+    let _ = submit_transaction(burn_tx).await;
 
     println!("Yippie");
 }
