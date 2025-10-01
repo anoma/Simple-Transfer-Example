@@ -1,7 +1,7 @@
-use crate::Base64;
 use arm::nullifier_key::NullifierKeyCommitment;
 use arm::resource::Resource;
 use serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
 use serde_with::serde_as;
 
 #[serde_as]

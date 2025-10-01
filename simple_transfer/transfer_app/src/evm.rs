@@ -19,7 +19,10 @@ async fn pa_submit_transaction(
     match result {
         Ok(transaction_builder) => {
             let tx_hash = transaction_builder.tx_hash().encode_hex();
-            println!("submitted transaction https://sepolia.etherscan.io/tx/{}", tx_hash);
+            println!(
+                "submitted transaction https://sepolia.etherscan.io/tx/{}",
+                tx_hash
+            );
             // wait for 3 confirmations
             // transaction_builder
             //     .watch()
@@ -50,7 +53,6 @@ pub fn submit_transaction(transaction: Transaction) -> Option<String> {
     }
 }
 
-
 // pub async fn pa_latest_root(commitment: Digest) {
 //     protocol_adapter()
 //         .latestRoot()
@@ -80,7 +82,7 @@ pub async fn pa_merkle_path(commitment: Digest) -> MerklePath {
         .map(|(i, sibling_b256)| {
             let sibling_digest = Digest::from_bytes(sibling_b256.0);
             let sibling = bytes_to_words(sibling_digest.as_bytes());
-            let pa_sibling_is_left = !merkle_proof.directionBits.bit(i as usize);
+            let pa_sibling_is_left = !merkle_proof.directionBits.bit(i);
             let arm_leaf_is_on_right = pa_sibling_is_left;
             (sibling, arm_leaf_is_on_right)
         })
@@ -90,6 +92,6 @@ pub async fn pa_merkle_path(commitment: Digest) -> MerklePath {
 }
 
 pub fn get_merkle_path(commitment: Digest) -> MerklePath {
-    let rt = Runtime::new().unwrap();
+    let rt = tokio::runtime::Handle::current();
     rt.block_on(pa_merkle_path(commitment))
 }

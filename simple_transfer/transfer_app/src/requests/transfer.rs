@@ -1,7 +1,7 @@
 use crate::requests::resource::JsonResource;
-use crate::Base64;
 use k256::AffinePoint;
 use serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
 use serde_with::serde_as;
 
 #[serde_as]
@@ -18,6 +18,8 @@ pub struct TransferRequest {
     pub receiver_encryption_pk: AffinePoint,
 }
 
+// these can be dead code because they're used for development.
+#[allow(dead_code)]
 pub fn parse_json_transfer_request(json_str: &str) -> Option<TransferRequest> {
     let create_request = serde_json::from_str::<TransferRequest>(json_str);
     match create_request {

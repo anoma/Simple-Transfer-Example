@@ -16,6 +16,8 @@ use arm::transaction::{Delta, Transaction};
 use arm::utils::{hash_bytes, words_to_bytes};
 use transfer_library::TransferLogic;
 
+// these can be dead code because they're used for development.
+#[allow(dead_code)]
 pub fn create_transfer_json_request(
     bob: Keychain,
     alice: Keychain,

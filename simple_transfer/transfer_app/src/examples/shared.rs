@@ -8,6 +8,8 @@ use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signatu
 use std::env;
 use tokio::runtime::Runtime;
 
+// these can be dead code because they're used for development.
+#[allow(dead_code)]
 pub fn read_private_key() -> PrivateKeySigner {
     let env_val: String = env::var("PRIVATE_KEY").expect("env var PRIVATE_KEY not found");
     let private_key: PrivateKeySigner = env_val.parse().expect("failed to parse PRIVATE_KEY");

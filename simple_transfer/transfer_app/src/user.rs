@@ -19,11 +19,13 @@ pub struct Keychain {
     pub encryption_sk: SecretKey,
     pub encryption_pk: AffinePoint,
     pub evm_address: Address,
-    #[serde(skip, default= "default_none")]
+    #[serde(skip, default = "default_none")]
     pub private_key: Option<PrivateKeySigner>,
 }
 
 impl Keychain {
+    // these can be dead code because they're used for development.
+    #[allow(dead_code)]
     pub fn bob(private_key: Option<PrivateKeySigner>) -> Keychain {
         let evm_address = "0x44B73CbC3C2E902cD0768854c2ff914DD44a325F"
             .parse::<Address>()
@@ -81,7 +83,8 @@ impl Keychain {
             private_key,
         }
     }
-
+    // these can be dead code because they're used for development.
+    #[allow(dead_code)]
     pub fn alice(private_key: Option<PrivateKeySigner>) -> Keychain {
         let evm_address = "0x26aBD8C363f6Aa7FC4db989Ba4F34E7Bd5573A16"
             .parse::<Address>()

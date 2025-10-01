@@ -108,6 +108,8 @@ pub fn mint_from_json_request(create_request: CreateRequest) -> (Resource, Trans
     (created_resource, tx)
 }
 
+// these can be dead code because they're used for development.
+#[allow(dead_code)]
 pub fn create_mint_json_request(minter: Keychain) -> CreateRequest {
     // let rng = rand::thread_rng();
     let latest_commitment_tree_root: Vec<u32> = INITIAL_ROOT.as_words().to_vec();
