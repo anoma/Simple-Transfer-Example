@@ -22,7 +22,7 @@ lazy_static! {
             .unwrap();
 }
 
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct TransferLogic {
     witness: SimpleTransferWitness,
 }
