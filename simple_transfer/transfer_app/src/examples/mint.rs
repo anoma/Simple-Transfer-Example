@@ -187,3 +187,8 @@ pub fn create_mint_json_request(minter: Keychain) -> CreateRequest {
         created_encryption_pk: minter.encryption_pk,
     }
 }
+
+pub fn create_mint_json_string(minter: Keychain) -> String {
+    let create_request = create_mint_json_request(minter);
+    serde_json::to_string(&create_request).unwrap()
+}
