@@ -3,18 +3,28 @@ name = "transfer_app"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["arm/bonsai"]
+gpu = ["arm/cuda"]
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.0"
 transfer_witness = { path = "../transfer_witness" }
-transfer_library = { path = "../transfer_library"}
-arm = { git = "https://github.com/anoma/arm-risc0", branch = "jurevans/patch-keys-0.6.1",  default-features = false, features = ["transaction", "bonsai", "groth16_prover"] }
+transfer_library = { path = "../transfer_library" }
+arm = { git = "https://github.com/anoma/arm-risc0", branch = "jurevans/patch-keys-0.6.1", default-features = false, features = [
+    "transaction",
+    "groth16_prover",
+] }
 rand = "0.8"
-risc0-zkvm = { version = "3.0.3", default-features = false, features = ["std", "unstable"] }
+risc0-zkvm = { version = "3.0.3", default-features = false, features = [
+    "std",
+    "unstable",
+] }
 lazy_static = "1.5.0"
 hex = "0.4"
-evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", branch = "feature/sepolia-demo"}
+evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", branch = "feature/sepolia-demo" }
 tokio = "1.47.1"
 alloy = { version = "1.0.23", features = ["full"] }
 k256 = { version = "0.13", features = ["serde"] }
