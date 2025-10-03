@@ -20,7 +20,11 @@ use crate::user::Keychain;
 use crate::{evm::submit_transaction, examples::mint::create_mint_json_string};
 use alloy::primitives::{address, Address};
 use arm::resource::Resource;
-use rocket::{catch, catchers, launch, post, routes, serde::json::Json, Request};
+use rocket::fairing::{Fairing, Info, Kind};
+use rocket::http::Header;
+use rocket::{
+    catch, catchers, launch, options, post, routes, serde::json::Json, Request, Response,
+};
 use serde_json::{json, Value};
 use std::env;
 use tokio::task::spawn_blocking;
@@ -93,6 +97,33 @@ fn default_error(_req: &Request) -> Json<Value> {
     Json(json!({"message": "error processing request"}))
 }
 
+/// Catches all OPTION requests in order to get the CORS related Fairing triggered.
+#[options("/<_..>")]
+fn all_options() {
+    /* Intentionally left empty */
+}
+
+pub struct Cors;
+#[rocket::async_trait]
+impl Fairing for Cors {
+    fn info(&self) -> Info {
+        Info {
+            name: "Cross-Origin-Resource-Sharing Fairing",
+            kind: Kind::Response,
+        }
+    }
+
+    async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
+        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
+        response.set_header(Header::new(
+            "Access-Control-Allow-Methods",
+            "POST, PATCH, PUT, DELETE, HEAD, OPTIONS, GET",
+        ));
+        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
+    }
+}
+
 #[launch]
 fn rocket() -> _ {
     let args: Vec<String> = env::args().collect();
@@ -106,6 +137,7 @@ fn rocket() -> _ {
     }
 
     rocket::build()
-        .mount("/", routes![mint, transfer])
+        .attach(Cors)
+        .mount("/", routes![mint, transfer, all_options])
         .register("/", catchers![default_error, unprocessable])
 }

@@ -47,8 +47,15 @@ docker build -t transfer .
 Run the container as follows. Replace the values as necessary.
 
 ```shell
-
+docker run -it --rm -p 8000:8000 --runtime=nvidia --gpus all                    \
+  -e API_KEY="alchemy_api_key"                                                  \
+  -e PRIVATE_KEY="wallet_private_key"                                           \
+  -e ETHERSCAN="etherscan_api_key"                                              \
+  -e PROTOCOL_ADAPTER_ADDRESS_SEPOLIA="address_for_protocol_adapter_on_sepolia" \
+  -e RPC_URL=https://eth-sepolia.g.alchemy.com/v2                               \
+  transfer
 ```
+
 ## Generate example JSON
 
 The application has a flag to generate an example JSON request to mint.
