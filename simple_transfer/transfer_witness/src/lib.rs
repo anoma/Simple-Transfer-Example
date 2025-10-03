@@ -3,11 +3,8 @@ use arm::{
     authorization::{AuthorizationSignature, AuthorizationVerifyingKey},
     encryption::{AffinePoint, Ciphertext, SecretKey},
     evm::{
-        CallType, 
-        encode_permit_witness_transfer_from,
-        encode_transfer, 
-        ForwarderCalldata,
-        PermitTransferFrom
+        encode_permit_witness_transfer_from, encode_transfer, CallType, ForwarderCalldata,
+        PermitTransferFrom,
     },
     logic_instance::{AppData, ExpirableBlob, LogicInstance},
     merkle_path::MerklePath,

@@ -2,7 +2,7 @@
 resolver = "2"
 
 # members = [ "native/counter_app","native/counter_nif", "native/counter_app"]
-members = [ "simple_transfer/transfer_app"]
+members = [ "simple_transfer/transfer_app", "simple_transfer/transfer_nif"]
 exclude = ["native"]
 
 # Always optimize; building and running the guest takes much longer without optimization.
