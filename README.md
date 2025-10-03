@@ -1,8 +1,10 @@
 # Simplified Transfer Example
 
-This repository contains a simplified example of a transfer application built with Rust, exposed via a JSON api.
+This repository contains a simplified example of a transfer application built
+with Rust, exposed via a JSON api.
 
-The project demonstrates basic transfer functionality with multiple components organized in a workspace structure.
+The project demonstrates basic transfer functionality with multiple components
+organized in a workspace structure.
 
 ## Components
 
@@ -38,7 +40,9 @@ cargo build --features gpu
 
 ### Docker
 
-There is a Docker image in the repo to build your own image.
+There is a Docker image in the repo to build your own image. Note that the
+docker image uses local proving and requires you to install nvidia cuda
+container tools.
 
 ```shell
 docker build -t transfer .
@@ -65,7 +69,8 @@ The application has a flag to generate an example JSON request to mint.
 cargo run -- --mint-example
 ```
 
-if you have the application running a webserver somewhere, you can pipe the output through to a `curl` request.
+if you have the application running a webserver somewhere, you can pipe the
+output through to a `curl` request.
 
 ```shell
 cargo run -- --mint-example | curl -X POST -H "Content-Type: application/json" -d @- http://localhost:8000/api/mint
