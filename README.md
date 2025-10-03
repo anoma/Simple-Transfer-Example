@@ -36,6 +36,26 @@ If you want to use local proving, enable the `gpu` feature flag:
 cargo build --features gpu
 ```
 
+### Docker
+
+There is a Docker image in the repo to build your own image.
+
+```shell
+docker build -t transfer .
+```
+
+Run the container as follows. Replace the values as necessary.
+
+```shell
+docker run -it --rm -p 8000:8000 --runtime=nvidia --gpus all                        \
+  -e API_KEY_ALCHEMY="ovJyhl3KJ0vGe-StM8BQf"                                        \
+  -e API_KEY="ovJyhl3KJ0vGe-StM8BQf"                                                \
+  -e PRIVATE_KEY="c5de8df2dff5964d9ff981282fea2b5e3bbee6801039f25a426b73d239f8694a" \
+  -e ETHERSCAN="SVM9PUWMGKCW1K4U5KFTHAZZCDTF9C5136"                                 \
+  -e PROTOCOL_ADAPTER_ADDRESS_SEPOLIA="0xc1CcCff7A03D640F2B25e86e88c9DDFCbD3cF09a"  \
+  -e RPC_URL=https://eth-sepolia.g.alchemy.com/v2                                   \
+  transfer /bin/bash
+```
 ## Generate example JSON
 
 The application has a flag to generate an example JSON request to mint.
