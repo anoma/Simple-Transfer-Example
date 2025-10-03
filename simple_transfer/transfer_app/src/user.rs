@@ -85,10 +85,8 @@ impl Keychain {
     }
     // these can be dead code because they're used for development.
     #[allow(dead_code)]
-    pub fn alice(private_key: Option<PrivateKeySigner>) -> Keychain {
-        let evm_address = "0x26aBD8C363f6Aa7FC4db989Ba4F34E7Bd5573A16"
-            .parse::<Address>()
-            .unwrap();
+    pub fn alice(address: String, private_key: Option<PrivateKeySigner>) -> Keychain {
+        let evm_address = address.parse::<Address>().unwrap();
 
         let discovery_sk_bytes: [u8; 32] = [
             186, 37, 174, 180, 152, 218, 143, 227, 232, 139, 212, 23, 5, 37, 204, 192, 80, 5, 200,

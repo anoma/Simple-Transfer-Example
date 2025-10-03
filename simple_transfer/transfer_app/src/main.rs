@@ -11,7 +11,7 @@ pub const DEADLINE: u32 = 1893456000;
 pub const FORWARDER_ADDRESS: Address = address!("0x09711e24A3748591624d2E575BB1bD87db87EFC8");
 
 use crate::examples::mint::mint_from_json_request;
-use crate::examples::shared::read_private_key;
+use crate::examples::shared::{read_address, read_private_key};
 use crate::examples::transfer::transfer_from_json_request;
 use crate::requests::mint::CreateRequest;
 use crate::requests::resource::resource_to_request_resource;
@@ -130,7 +130,8 @@ fn rocket() -> _ {
 
     if args.contains(&"--mint-example".to_string()) {
         let private_key = read_private_key();
-        let alice = Keychain::alice(Some(private_key));
+        let address = read_address();
+        let alice = Keychain::alice(address, Some(private_key));
 
         println!("{}", create_mint_json_string(alice));
         std::process::exit(0);

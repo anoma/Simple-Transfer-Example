@@ -50,6 +50,7 @@ Run the container as follows. Replace the values as necessary.
 docker run -it --rm -p 8000:8000 --runtime=nvidia --gpus all                    \
   -e API_KEY="alchemy_api_key"                                                  \
   -e PRIVATE_KEY="wallet_private_key"                                           \
+  -e USER_ADDRESS="wallet_public_address"                                       \
   -e ETHERSCAN="etherscan_api_key"                                              \
   -e PROTOCOL_ADAPTER_ADDRESS_SEPOLIA="address_for_protocol_adapter_on_sepolia" \
   -e RPC_URL=https://eth-sepolia.g.alchemy.com/v2                               \

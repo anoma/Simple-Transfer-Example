@@ -16,6 +16,11 @@ pub fn read_private_key() -> PrivateKeySigner {
     private_key
 }
 
+#[allow(dead_code)]
+pub fn read_address() -> String {
+    env::var("USER_ADDRESS").expect("env var USER_ADDRESS not found")
+}
+
 pub fn value_ref(call_type: CallType, user_addr: &[u8]) -> Vec<u8> {
     let mut data = vec![call_type as u8];
     data.extend_from_slice(user_addr);
