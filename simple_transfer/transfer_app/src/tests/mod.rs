@@ -1,2 +1,3 @@
-mod mint;
-mod transfer;
+mod end_to_end;
+mod fixtures;
+mod approve;

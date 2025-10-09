@@ -1,3 +1,5 @@
+pub mod approve;
 pub mod mint;
 pub mod resource;
-pub(crate) mod transfer;
+pub mod split;
+pub mod transfer;
