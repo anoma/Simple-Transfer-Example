@@ -6,10 +6,13 @@ mod tests;
 mod user;
 mod webserver;
 use crate::requests::mint::json_example_mint_request;
-use crate::webserver::{burn, health, is_approved, mint, transfer};
+use crate::webserver::{
+    all_options, burn, default_error, health, is_approved, mint, split, transfer, unprocessable,
+    Cors,
+};
 use alloy::primitives::Address;
 use rocket::serde::{Deserialize, Serialize};
-use rocket::{launch, routes};
+use rocket::{catchers, launch, routes};
 use std::env;
 use std::error::Error;
 // #[post("/api/minting", data = "<payload>")]
@@ -235,7 +238,20 @@ async fn rocket() -> _ {
 
     rocket::build()
         .manage(config)
-        .mount("/", routes![health, is_approved, mint, transfer, burn])
+        .attach(Cors)
+        .mount(
+            "/",
+            routes![
+                health,
+                is_approved,
+                mint,
+                transfer,
+                burn,
+                split,
+                all_options
+            ],
+        )
+        .register("/", catchers![default_error, unprocessable])
     //
     // // create keychains for all users
     // let private_key = read_private_key();

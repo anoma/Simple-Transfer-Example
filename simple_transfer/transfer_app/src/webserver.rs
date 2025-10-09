@@ -4,11 +4,14 @@ use crate::examples::shared::parse_address;
 use crate::requests::approve::ApproveRequest;
 use crate::requests::burn::{burn_from_request, BurnRequest};
 use crate::requests::mint::{mint_from_request, CreateRequest};
+use crate::requests::split::{split_from_request, SplitRequest};
 use crate::requests::transfer::{transfer_from_request, TransferRequest};
 use crate::requests::Expand;
 use crate::AnomaPayConfig;
+use rocket::fairing::{Fairing, Info, Kind};
+use rocket::http::Header;
 use rocket::serde::json::{json, to_value, Json};
-use rocket::{get, post, State};
+use rocket::{catch, get, options, post, Request, Response, State};
 use serde_json::Value;
 
 /// Return the health status
@@ -100,4 +103,60 @@ pub async fn burn(payload: Json<BurnRequest>, config: &State<AnomaPayConfig>) ->
 
     // create the response
     Json(json!({"transaction_hash": tx_hash}))
+}
+
+/// Handles a request from the user to split a resource.
+#[post("/api/split", data = "<payload>")]
+pub async fn split(payload: Json<SplitRequest>) -> Json<Value> {
+    let request = payload.into_inner();
+
+    // create the transaction
+    let Ok(transaction) = split_from_request(request).await else {
+        return Json(json!({"error": "failed to create split transaction"}));
+    };
+
+    // submit the transaction
+    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
+        return Json(json!({"error": "failed to submit split transaction"}));
+    };
+
+    // create the response
+    Json(json!({"transaction_hash": tx_hash}))
+}
+
+#[catch(422)]
+pub fn unprocessable(_req: &Request) -> Json<Value> {
+    Json(json!({"message": "error processing request. is the json valid?"}))
+}
+
+#[catch(default)]
+pub fn default_error(_req: &Request) -> Json<Value> {
+    Json(json!({"message": "error processing request"}))
+}
+
+/// Catches all OPTION requests in order to get the CORS related Fairing triggered.
+#[options("/<_..>")]
+pub fn all_options() {
+    /* Intentionally left empty */
+}
+
+pub struct Cors;
+#[rocket::async_trait]
+impl Fairing for Cors {
+    fn info(&self) -> Info {
+        Info {
+            name: "Cross-Origin-Resource-Sharing Fairing",
+            kind: Kind::Response,
+        }
+    }
+
+    async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
+        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
+        response.set_header(Header::new(
+            "Access-Control-Allow-Methods",
+            "POST, PATCH, PUT, DELETE, HEAD, OPTIONS, GET",
+        ));
+        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
+    }
 }

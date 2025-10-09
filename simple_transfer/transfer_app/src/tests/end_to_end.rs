@@ -12,7 +12,7 @@ mod tests {
     use arm::transaction::Transaction;
 
     // time to wait for a transaction to be confirmed
-    pub const WAIT_TIME: u64 = 45;
+    pub const WAIT_TIME: u64 = 60;
 
     /// Run all the scenarios in sequence.
     /// Rust tests run in parallel by default and this gums up the works.
@@ -29,7 +29,7 @@ mod tests {
         test_mint_and_burn().await;
 
         // test mint, split and then burn
-        // test_mint_and_split_and_burn().await;
+        test_mint_and_split_and_burn().await;
     }
 
     ////////////////////////////////////////////////////////////////////////////
