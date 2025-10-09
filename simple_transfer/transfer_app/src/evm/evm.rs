@@ -11,6 +11,7 @@ use evm_protocol_adapter_bindings::conversion::ProtocolAdapter;
 use evm_protocol_adapter_bindings::conversion::ProtocolAdapter::merkleProofReturn;
 use hex::ToHex;
 use risc0_zkvm::Digest;
+use std::hash::Hash;
 use std::time::Duration;
 
 /// Submit a transaction to the protocol adapter, and wait for confirmation.
@@ -34,18 +35,12 @@ async fn pa_submit_transaction(
     Ok(builder)
 }
 
-pub async fn pa_wait_for_confirmations(
-    _builder: PendingTransactionBuilder<Ethereum>,
-) -> Result<(), EvmError> {
-    // let x = builder.with_required_confirmations(5).watch().await;
-    tokio::time::sleep(Duration::from_secs(60)).await;
-    Ok(())
-}
-
 /// Submit the transaction and wait for confirmations
-pub async fn pa_submit_and_await(transaction: Transaction) -> Result<(), EvmError> {
+pub async fn pa_submit_and_await(transaction: Transaction) -> Result<String, EvmError> {
     let transaction_builder = pa_submit_transaction(transaction).await?;
-    pa_wait_for_confirmations(transaction_builder).await
+    let tx_hash = &transaction_builder.tx_hash();
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    Ok(tx_hash.0.encode_hex())
 }
 
 /// Calls out to the protocol adapter to obtain the merkle proof for a given resource commitment.

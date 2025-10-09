@@ -5,45 +5,13 @@ mod requests;
 mod tests;
 mod user;
 mod webserver;
-// constants
-
+use crate::requests::mint::json_example_mint_request;
+use crate::webserver::{health, is_approved};
 use alloy::primitives::Address;
+use rocket::serde::{Deserialize, Serialize};
+use rocket::{launch, routes};
 use std::env;
 use std::error::Error;
-//
-// #[post("/api/is-approved", data = "<payload>")]
-// async fn is_approved(payload: Json<CheckApproveRequest>) -> Json<Value> {
-//     let approve_request = payload.into_inner();
-//
-//     let address = parse_address(approve_request.address);
-//     let mut user_address;
-//     match address {
-//         Some(address) => {
-//             user_address = address;
-//         }
-//         None => return Json(json!({"error": "failed to submit transaction"})),
-//     }
-//     let signer: PrivateKeySigner =
-//         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-//             .parse()
-//             .unwrap();
-//
-//     //
-//     // let approved = is_address_approved(signer.address()).await;
-//
-//     Json(json!({"error": "failed to submit transaction"}))
-//     // match res {
-//     //     Ok(result) => match result {
-//     //         Some((tx_hash, resource)) => {
-//     //             let json_resource = resource_to_request_resource(resource);
-//     //
-//     //             Json(json!({"transaction_hash": tx_hash, "resource": json_resource}))
-//     //         }
-//     //         None => Json(json!({"error": "failed to submit transaction"})),
-//     //     },
-//     //     Err(_) => Json(json!({"error": "failed to submit transaction"})),
-//     // }
-// }
 // #[post("/api/minting", data = "<payload>")]
 // async fn mint(payload: Json<CreateRequest>) -> Json<Value> {
 //     let create_request = payload.into_inner();
@@ -190,7 +158,7 @@ fn rocket() -> _ {
 */
 
 /// Configuration parameters for the Anomapay backend.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AnomaPayConfig {
     // Address of the tokens that are being wrapped (e.g., USDC)
     token_address: Address,
@@ -205,6 +173,7 @@ struct AnomaPayConfig {
     // url of the ethereum rpc
     ethereum_rpc: String,
     // api key for the ethereum rpc
+    #[serde(skip_serializing)]
     ethereum_rpc_api_key: String,
 }
 
@@ -243,14 +212,30 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
         ethereum_rpc_api_key,
     })
 }
-#[rocket::main]
-async fn main() {
-    webserver::server().launch().await;
-    // // load the config
-    // let config = load_config().unwrap_or_else(|e| {
-    //     eprintln!("Error loading config: {}", e);
-    //     std::process::exit(1);
-    // });
+#[launch]
+async fn rocket() -> _ {
+    // load the config
+    let config: AnomaPayConfig = load_config().unwrap_or_else(|e| {
+        eprintln!("Error loading config: {}", e);
+        std::process::exit(1);
+    });
+
+    // read in cli arguments
+    let args: Vec<String> = env::args().collect();
+
+    // --mint-example produces an example json string for minting a transaction
+    if args.contains(&"--minting-example".to_string()) {
+        let Ok(json_str) = json_example_mint_request(&config).await else {
+            println!("failed to create a json string example");
+            std::process::exit(0);
+        };
+        println!("{}", json_str);
+        std::process::exit(0);
+    }
+
+    rocket::build()
+        .manage(config)
+        .mount("/", routes![health, is_approved])
     //
     // // create keychains for all users
     // let private_key = read_private_key();

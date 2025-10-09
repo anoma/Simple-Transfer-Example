@@ -7,4 +7,5 @@ pub enum TransactionError {
     VerificationFailure,
     MerkleProofError,
     InvalidAmount,
+    EncodingError,
 }

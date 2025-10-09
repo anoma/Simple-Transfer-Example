@@ -1,3 +1,4 @@
+use crate::evm::errors::EvmError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
 use arm::authorization::{AuthorizationSigningKey, AuthorizationVerifyingKey};
@@ -5,6 +6,7 @@ use arm::encryption::SecretKey;
 use arm::nullifier_key::NullifierKey;
 use k256::AffinePoint;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 fn default_none() -> Option<PrivateKeySigner> {
     None
