@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::evm::evm::pa_submit_and_await;
+    use crate::evm::evm_calls::pa_submit_and_await;
     use crate::examples::end_to_end::burn::create_burn_transaction;
     use crate::examples::end_to_end::mint::create_mint_transaction;
     use crate::examples::end_to_end::split::create_split_transaction;

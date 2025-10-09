@@ -1,6 +1,6 @@
 use crate::errors::TransactionError;
 use crate::errors::TransactionError::{ActionTreeError, InvalidKeyChain, MerkleProofError};
-use crate::evm::evm::pa_merkle_path;
+use crate::evm::evm_calls::pa_merkle_path;
 use crate::examples::burn::value_ref_ephemeral_burn;
 use crate::examples::shared::{label_ref, random_nonce, verify_transaction};
 use crate::user::Keychain;

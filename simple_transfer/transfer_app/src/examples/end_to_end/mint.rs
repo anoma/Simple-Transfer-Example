@@ -19,6 +19,8 @@ use arm::Digest;
 use std::thread;
 use transfer_library::TransferLogic;
 
+// these can be dead code because they're used for development.
+#[allow(dead_code)]
 pub async fn create_mint_transaction(
     minter: Keychain,
     amount: u128,

@@ -11,7 +11,6 @@ use evm_protocol_adapter_bindings::conversion::ProtocolAdapter;
 use evm_protocol_adapter_bindings::conversion::ProtocolAdapter::merkleProofReturn;
 use hex::ToHex;
 use risc0_zkvm::Digest;
-use std::hash::Hash;
 use std::time::Duration;
 
 /// Submit a transaction to the protocol adapter, and wait for confirmation.

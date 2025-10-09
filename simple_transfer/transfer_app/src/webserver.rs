@@ -1,16 +1,13 @@
 use crate::evm::approve::is_address_approved;
-use crate::evm::evm::pa_submit_and_await;
+use crate::evm::evm_calls::pa_submit_and_await;
 use crate::examples::shared::parse_address;
 use crate::requests::approve::ApproveRequest;
 use crate::requests::mint::{mint_from_request, CreateRequest};
 use crate::requests::Expand;
 use crate::AnomaPayConfig;
-use alloy::primitives::Address;
 use rocket::serde::json::{json, to_value, Json};
-use rocket::{get, launch, post, routes, Build, Rocket, State};
+use rocket::{get, post, State};
 use serde_json::Value;
-use std::error::Error;
-use std::str::FromStr;
 
 /// Return the health status
 #[get("/health")]
@@ -44,8 +41,8 @@ pub async fn is_approved(
 }
 
 /// Handles a request from the user to mint.
-#[post("/api/minting", data = "<payload>")]
-async fn mint(payload: Json<CreateRequest>, config: &State<AnomaPayConfig>) -> Json<Value> {
+#[post("/api/mint", data = "<payload>")]
+pub async fn mint(payload: Json<CreateRequest>, config: &State<AnomaPayConfig>) -> Json<Value> {
     let config: &AnomaPayConfig = config.inner();
     let create_request = payload.into_inner();
 
