@@ -1,6 +1,7 @@
-use crate::examples::mint::TransactionError;
-use crate::examples::mint::TransactionError::VerificationFailure;
+use crate::errors::TransactionError;
+use crate::errors::TransactionError::VerificationFailure;
 use crate::user::Keychain;
+use crate::AnomaPayConfig;
 use alloy::primitives::{Signature, B256, U256};
 use alloy::signers::local::PrivateKeySigner;
 use arm::action_tree::MerkleTree;
@@ -10,7 +11,6 @@ use arm::utils::{hash_bytes, words_to_bytes};
 use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signature;
 use rand::Rng;
 use std::env;
-use crate::AnomaPayConfig;
 
 /// Generates a random nonce. A nonce is an array of 32 8-byte integers.
 pub fn random_nonce() -> [u8; 32] {
@@ -45,7 +45,7 @@ pub fn value_ref_created(keychain: &Keychain) -> Vec<u8> {
 /// value allows us to distinguish between wrapped USDC or USDT tokens, for example. The
 /// forwarder contract is used for multiple tokens, so the tuple (forwarder address, token
 /// contract) uniquely identifies a resource.
-pub fn label_ref(config : &AnomaPayConfig) -> Vec<u8> {
+pub fn label_ref(config: &AnomaPayConfig) -> Vec<u8> {
     hash_bytes(
         &[
             config.forwarder_address.to_vec(),
@@ -79,9 +79,8 @@ pub async fn create_permit_signature(
     action_tree: MerkleTree,
     nullifier: [u8; 32],
     amount: u128,
-    config: &AnomaPayConfig
+    config: &AnomaPayConfig,
 ) -> Signature {
-
     let action_tree_root: Vec<u32> = action_tree.root();
     let action_tree_encoded: &[u8] = words_to_bytes(action_tree_root.as_slice());
 

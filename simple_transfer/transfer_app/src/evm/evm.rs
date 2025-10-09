@@ -1,4 +1,5 @@
-use crate::evm::EvmError::EvmSubmitError;
+use crate::evm::errors::EvmError;
+use crate::evm::errors::EvmError::EvmSubmitError;
 use alloy::network::Ethereum;
 use alloy::primitives::B256;
 use alloy::providers::PendingTransactionBuilder;
@@ -11,13 +12,6 @@ use evm_protocol_adapter_bindings::conversion::ProtocolAdapter::merkleProofRetur
 use hex::ToHex;
 use risc0_zkvm::Digest;
 use std::time::Duration;
-
-/// An error struct to signal an error occurred during the creation of a transaction.
-#[derive(Debug, Clone)]
-pub enum EvmError {
-    MerklePathError,
-    EvmSubmitError,
-}
 
 /// Submit a transaction to the protocol adapter, and wait for confirmation.
 async fn pa_submit_transaction(
@@ -85,4 +79,3 @@ pub async fn pa_merkle_path(commitment: Digest) -> Result<MerklePath, EvmError> 
 
     Ok(MerklePath::from_path(auth_path_vec.as_slice()))
 }
-

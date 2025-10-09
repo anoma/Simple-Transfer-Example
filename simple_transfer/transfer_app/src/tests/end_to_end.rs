@@ -1,15 +1,16 @@
 #[cfg(test)]
 mod tests {
-    use crate::evm::pa_submit_and_await;
-    use crate::examples::burn::create_burn_transaction;
-    use crate::examples::mint::create_mint_transaction;
-    use crate::examples::split::create_split_transaction;
-    use crate::examples::transfer::create_transfer_transaction;
+    use crate::evm::evm::pa_submit_and_await;
+    use crate::examples::end_to_end::burn::create_burn_transaction;
+    use crate::examples::end_to_end::mint::create_mint_transaction;
+    use crate::examples::end_to_end::split::create_split_transaction;
+    use crate::examples::end_to_end::transfer::create_transfer_transaction;
     use crate::tests::fixtures::{alice_keychain, bob_keychain};
     use crate::user::Keychain;
     use crate::{load_config, AnomaPayConfig};
     use arm::resource::Resource;
     use arm::transaction::Transaction;
+
     /// Run all the scenarios in sequence.
     /// Rust tests run in parallel by default and this gums up the works.
     /// This functions forces the tests to run in sequence.

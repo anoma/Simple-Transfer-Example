@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use alloy::primitives::address;
-    use crate::examples::approve::is_address_approved;
+    use crate::evm::approve::is_address_approved;
     use crate::load_config;
+    use alloy::primitives::address;
 
     /// Given an address that should not be approved on the permit2 contract, verify that it
     /// returns false.

@@ -1,11 +1,12 @@
+mod errors;
 mod evm;
 mod examples;
 mod requests;
 mod tests;
 mod user;
-
 // constants
 
+use crate::evm::evm::pa_submit_and_await;
 use alloy::primitives::Address;
 use std::env;
 use std::error::Error;
@@ -188,9 +189,8 @@ fn rocket() -> _ {
 }
 */
 
-use crate::evm::pa_submit_and_await;
-use crate::examples::burn::create_burn_transaction;
-use crate::examples::mint::create_mint_transaction;
+use crate::examples::end_to_end::burn::create_burn_transaction;
+use crate::examples::end_to_end::mint::create_mint_transaction;
 use crate::examples::shared::{read_address, read_private_key};
 use crate::user::Keychain;
 
