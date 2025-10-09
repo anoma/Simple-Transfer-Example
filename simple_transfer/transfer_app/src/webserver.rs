@@ -3,6 +3,7 @@ use crate::evm::evm_calls::pa_submit_and_await;
 use crate::examples::shared::parse_address;
 use crate::requests::approve::ApproveRequest;
 use crate::requests::mint::{mint_from_request, CreateRequest};
+use crate::requests::transfer::{transfer_from_request, TransferRequest};
 use crate::requests::Expand;
 use crate::AnomaPayConfig;
 use rocket::serde::json::{json, to_value, Json};
@@ -44,16 +45,37 @@ pub async fn is_approved(
 #[post("/api/mint", data = "<payload>")]
 pub async fn mint(payload: Json<CreateRequest>, config: &State<AnomaPayConfig>) -> Json<Value> {
     let config: &AnomaPayConfig = config.inner();
-    let create_request = payload.into_inner();
+    let request = payload.into_inner();
 
     // create the transaction
-    let Ok((created_resource, transaction)) = mint_from_request(create_request, config) else {
-        return Json(json!({"error": "failed to create transaction"}));
+    let Ok((created_resource, transaction)) = mint_from_request(request, config) else {
+        return Json(json!({"error": "failed to create mint transaction"}));
     };
 
     // submit the transaction
     let Ok(tx_hash) = pa_submit_and_await(transaction).await else {
-        return Json(json!({"error": "failed to submit transaction"}));
+        return Json(json!({"error": "failed to submit mint transaction"}));
+    };
+
+    // create the response
+    Json(json!({"transaction_hash": tx_hash, "resource": created_resource.simplify()}))
+}
+
+/// Handles a request from the user to mint.
+#[post("/api/transfer", data = "<payload>")]
+pub async fn transfer(
+    payload: Json<TransferRequest>,
+) -> Json<Value> {
+    let request = payload.into_inner();
+
+    // create the transaction
+    let Ok((created_resource, transaction)) = transfer_from_request(request).await else {
+        return Json(json!({"error": "failed to create transfer transaction"}));
+    };
+
+    // submit the transaction
+    let Ok(tx_hash) = pa_submit_and_await(transaction).await else {
+        return Json(json!({"error": "failed to submit transfer transaction"}));
     };
 
     // create the response

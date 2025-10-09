@@ -6,7 +6,7 @@ mod tests;
 mod user;
 mod webserver;
 use crate::requests::mint::json_example_mint_request;
-use crate::webserver::{health, is_approved, mint};
+use crate::webserver::{health, is_approved, mint, transfer};
 use alloy::primitives::Address;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{launch, routes};
@@ -235,7 +235,7 @@ async fn rocket() -> _ {
 
     rocket::build()
         .manage(config)
-        .mount("/", routes![health, is_approved, mint])
+        .mount("/", routes![health, is_approved, mint, transfer])
     //
     // // create keychains for all users
     // let private_key = read_private_key();
