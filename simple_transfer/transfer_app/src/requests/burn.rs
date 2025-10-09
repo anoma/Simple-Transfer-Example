@@ -1,35 +1,64 @@
 use crate::errors::TransactionError;
 use crate::errors::TransactionError::{ActionTreeError, InvalidKeyChain, MerkleProofError};
 use crate::evm::evm_calls::pa_merkle_path;
-use crate::examples::burn::value_ref_ephemeral_burn;
-use crate::examples::shared::{label_ref, random_nonce, verify_transaction};
-use crate::user::Keychain;
+use crate::examples::shared::{label_ref, random_nonce, value_ref, verify_transaction};
+use crate::requests::resource::JsonResource;
+use crate::requests::Expand;
 use crate::AnomaPayConfig;
 use arm::action::Action;
 use arm::action_tree::MerkleTree;
-use arm::authorization::AuthorizationSignature;
+use arm::authorization::{AuthorizationSignature, AuthorizationVerifyingKey};
 use arm::compliance::ComplianceWitness;
 use arm::compliance_unit::ComplianceUnit;
 use arm::delta_proof::DeltaWitness;
+use arm::evm::CallType;
 use arm::logic_proof::LogicProver;
+use arm::nullifier_key::NullifierKey;
 use arm::resource::Resource;
 use arm::transaction::{Delta, Transaction};
-use arm::utils::words_to_bytes;
+use arm::Digest;
+use k256::AffinePoint;
+use rocket::serde::{Deserialize, Serialize};
+use serde_with::base64::Base64;
+use serde_with::serde_as;
 use std::thread;
 use transfer_library::TransferLogic;
 
-// these can be dead code because they're used for development.
-#[allow(dead_code)]
-pub async fn create_burn_transaction(
-    burner: Keychain,
-    burned_resource: Resource,
+/// Defines the payload sent to the API to execute a burn request on /api/burn.
+#[serde_as]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct BurnRequest {
+    pub burned_resource: JsonResource,
+    #[serde_as(as = "Base64")]
+    pub burner_nf_key: Vec<u8>,
+    pub burner_verifying_key: AffinePoint,
+    #[serde_as(as = "Base64")]
+    pub burner_address: Vec<u8>,
+    #[serde_as(as = "Base64")]
+    pub auth_signature: Vec<u8>,
+}
+
+pub async fn burn_from_request(
+    request: BurnRequest,
     config: &AnomaPayConfig,
-) -> Result<(Resource, Transaction), TransactionError> {
-    // to burn a resource, we need the nullifier of that resource.
-    let burned_resource_nullifier = burned_resource
-        .nullifier(&burner.nf_key)
+) -> Result<Transaction, TransactionError> {
+    let burned_resource: Resource = Expand::expand(request.burned_resource);
+    let burner_nf_key: NullifierKey = NullifierKey::from_bytes(request.burner_nf_key.as_slice());
+    let burner_auth_verifying_key: AuthorizationVerifyingKey =
+        AuthorizationVerifyingKey::from_affine(request.burner_verifying_key);
+    let burned_resource_commitment = burned_resource.commitment();
+
+    let merkle_proof = pa_merkle_path(burned_resource_commitment)
+        .await
+        .map_err(|_| MerkleProofError)?;
+    let burner_address = request.burner_address;
+
+    let burned_resource_nullifier: Digest = burned_resource
+        .nullifier(&burner_nf_key)
         .ok_or(InvalidKeyChain)?;
 
+    let auth_signature: AuthorizationSignature =
+        AuthorizationSignature::from_bytes(request.auth_signature.as_slice());
     ////////////////////////////////////////////////////////////////////////////
     // Construct the ephemeral resource to create
 
@@ -37,10 +66,10 @@ pub async fn create_burn_transaction(
         logic_ref: TransferLogic::verifying_key_as_bytes(),
         label_ref: label_ref(config),
         quantity: burned_resource.quantity,
-        value_ref: value_ref_ephemeral_burn(&burner),
+        value_ref: value_ref(CallType::Unwrap, burner_address.as_ref()),
         is_ephemeral: true,
         nonce: burned_resource_nullifier.clone().as_bytes().to_vec(),
-        nk_commitment: burner.nf_key.commit(),
+        nk_commitment: burner_nf_key.commit(),
         rand_seed: random_nonce().to_vec(),
     };
 
@@ -52,30 +81,12 @@ pub async fn create_burn_transaction(
     let action_tree: MerkleTree =
         MerkleTree::new(vec![burned_resource_nullifier, created_resource_commitment]);
 
-    let action_tree_root: Vec<u32> = action_tree.root();
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Create the permit signature
-
-    let auth_signature: AuthorizationSignature = burner
-        .auth_signing_key
-        .sign(words_to_bytes(&action_tree_root));
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Get the merkle proof for the resource being transferred
-
-    let burned_resource_commitment = burned_resource.commitment();
-
-    let merkle_proof = pa_merkle_path(burned_resource_commitment)
-        .await
-        .map_err(|_| MerkleProofError)?;
-
     ////////////////////////////////////////////////////////////////////////////
     // Create compliance proof
 
     let compliance_witness = ComplianceWitness::from_resources_with_path(
         burned_resource.clone(),
-        burner.nf_key.clone(),
+        burner_nf_key.clone(),
         merkle_proof,
         created_resource.clone(),
     );
@@ -101,8 +112,8 @@ pub async fn create_burn_transaction(
     let created_logic_witness: TransferLogic = TransferLogic::consume_persistent_resource_logic(
         burned_resource.clone(),
         burned_resource_path,
-        burner.nf_key.clone(),
-        burner.auth_verifying_key(),
+        burner_nf_key.clone(),
+        burner_auth_verifying_key,
         auth_signature,
     );
 
@@ -113,13 +124,13 @@ pub async fn create_burn_transaction(
     let created_logic_proof = thread::spawn(move || created_logic_witness_clone.prove())
         .join()
         .unwrap();
-
+    //
     let burned_logic_witness: TransferLogic = TransferLogic::burn_resource_logic(
         created_resource.clone(),
         created_resource_path,
         config.forwarder_address.to_vec(),
         config.token_address.to_vec(),
-        burner.evm_address.to_vec(),
+        burner_address.to_vec(),
     );
 
     // generate the proof in a separate thread
@@ -143,5 +154,5 @@ pub async fn create_burn_transaction(
     transaction.generate_delta_proof();
 
     verify_transaction(transaction.clone())?;
-    Ok((created_resource, transaction))
+    Ok(transaction)
 }

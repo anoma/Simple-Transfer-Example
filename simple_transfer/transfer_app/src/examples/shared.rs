@@ -2,7 +2,7 @@ use crate::errors::TransactionError;
 use crate::errors::TransactionError::VerificationFailure;
 use crate::user::Keychain;
 use crate::AnomaPayConfig;
-use alloy::primitives::{Signature, B256, U256};
+use alloy::primitives::{Address, Signature, B256, U256};
 use alloy::signers::local::PrivateKeySigner;
 use arm::action_tree::MerkleTree;
 use arm::evm::CallType;
@@ -11,6 +11,15 @@ use arm::utils::{hash_bytes, words_to_bytes};
 use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signature;
 use rand::Rng;
 use std::env;
+
+pub fn parse_address(address_bytes: Vec<u8>) -> Option<Address> {
+    let bytes: Result<[u8; 20], _> = address_bytes.try_into();
+    match bytes {
+        Ok(bytes) => Some(Address::from_slice(&bytes)),
+
+        _ => None,
+    }
+}
 
 /// Generates a random nonce. A nonce is an array of 32 8-byte integers.
 pub fn random_nonce() -> [u8; 32] {

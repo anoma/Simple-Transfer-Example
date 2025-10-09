@@ -4,46 +4,17 @@ mod examples;
 mod requests;
 mod tests;
 mod user;
-// constants
-
-use crate::evm::evm::pa_submit_and_await;
+mod webserver;
+use crate::requests::mint::json_example_mint_request;
+use crate::webserver::{
+    all_options, burn, default_error, health, is_approved, mint, split, transfer, unprocessable,
+    Cors,
+};
 use alloy::primitives::Address;
+use rocket::serde::{Deserialize, Serialize};
+use rocket::{catchers, launch, routes};
 use std::env;
 use std::error::Error;
-//
-// #[post("/api/is-approved", data = "<payload>")]
-// async fn is_approved(payload: Json<CheckApproveRequest>) -> Json<Value> {
-//     let approve_request = payload.into_inner();
-//
-//     let address = parse_address(approve_request.address);
-//     let mut user_address;
-//     match address {
-//         Some(address) => {
-//             user_address = address;
-//         }
-//         None => return Json(json!({"error": "failed to submit transaction"})),
-//     }
-//     let signer: PrivateKeySigner =
-//         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-//             .parse()
-//             .unwrap();
-//
-//     //
-//     // let approved = is_address_approved(signer.address()).await;
-//
-//     Json(json!({"error": "failed to submit transaction"}))
-//     // match res {
-//     //     Ok(result) => match result {
-//     //         Some((tx_hash, resource)) => {
-//     //             let json_resource = resource_to_request_resource(resource);
-//     //
-//     //             Json(json!({"transaction_hash": tx_hash, "resource": json_resource}))
-//     //         }
-//     //         None => Json(json!({"error": "failed to submit transaction"})),
-//     //     },
-//     //     Err(_) => Json(json!({"error": "failed to submit transaction"})),
-//     // }
-// }
 // #[post("/api/minting", data = "<payload>")]
 // async fn mint(payload: Json<CreateRequest>) -> Json<Value> {
 //     let create_request = payload.into_inner();
@@ -189,13 +160,8 @@ fn rocket() -> _ {
 }
 */
 
-use crate::examples::end_to_end::burn::create_burn_transaction;
-use crate::examples::end_to_end::mint::create_mint_transaction;
-use crate::examples::shared::{read_address, read_private_key};
-use crate::user::Keychain;
-
 /// Configuration parameters for the Anomapay backend.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AnomaPayConfig {
     // Address of the tokens that are being wrapped (e.g., USDC)
     token_address: Address,
@@ -210,6 +176,7 @@ struct AnomaPayConfig {
     // url of the ethereum rpc
     ethereum_rpc: String,
     // api key for the ethereum rpc
+    #[serde(skip_serializing)]
     ethereum_rpc_api_key: String,
 }
 
@@ -248,34 +215,64 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
         ethereum_rpc_api_key,
     })
 }
-#[tokio::main]
-async fn main() {
+#[launch]
+async fn rocket() -> _ {
     // load the config
-    let config = load_config().unwrap_or_else(|e| {
+    let config: AnomaPayConfig = load_config().unwrap_or_else(|e| {
         eprintln!("Error loading config: {}", e);
         std::process::exit(1);
     });
 
-    // create keychains for all users
-    let private_key = read_private_key();
-    let address = read_address();
-    let alice = Keychain::alice(address, Some(private_key));
+    // read in cli arguments
+    let args: Vec<String> = env::args().collect();
 
-    let _bob = Keychain::bob(None);
+    // --mint-example produces an example json string for minting a transaction
+    if args.contains(&"--minting-example".to_string()) {
+        let Ok(json_str) = json_example_mint_request(&config).await else {
+            println!("failed to create a json string example");
+            std::process::exit(0);
+        };
+        println!("{}", json_str);
+        std::process::exit(0);
+    }
 
-    ////////////////////////////////////////////////////////////////////////////
-    // Mint
-    let (resource, transaction) = create_mint_transaction(alice.clone(), 2, &config)
-        .await
-        .unwrap_or_else(|e| {
-            println!("Error creating mint transaction: {:?}", e);
-            std::process::exit(1);
-        });
-    println!("created mint transaction");
-    pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
-        println!("failed to submit the mint transaction");
-        std::process::exit(1);
-    });
+    rocket::build()
+        .manage(config)
+        .attach(Cors)
+        .mount(
+            "/",
+            routes![
+                health,
+                is_approved,
+                mint,
+                transfer,
+                burn,
+                split,
+                all_options
+            ],
+        )
+        .register("/", catchers![default_error, unprocessable])
+    //
+    // // create keychains for all users
+    // let private_key = read_private_key();
+    // let address = read_address();
+    // let alice = Keychain::alice(address, Some(private_key));
+    //
+    // let _bob = Keychain::bob(None);
+    //
+    // ////////////////////////////////////////////////////////////////////////////
+    // // Mint
+    // let (resource, transaction) = create_mint_transaction(alice.clone(), 2, &config)
+    //     .await
+    //     .unwrap_or_else(|e| {
+    //         println!("Error creating mint transaction: {:?}", e);
+    //         std::process::exit(1);
+    //     });
+    // println!("created mint transaction");
+    // pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
+    //     println!("failed to submit the mint transaction");
+    //     std::process::exit(1);
+    // });
 
     ////////////////////////////////////////////////////////////////////////////
     // Transfer
@@ -311,16 +308,16 @@ async fn main() {
     ////////////////////////////////////////////////////////////////////////////
     // Burn
 
-    let (_resource, transaction) =
-        create_burn_transaction(alice.clone(), resource.clone(), &config)
-            .await
-            .unwrap_or_else(|e| {
-                println!("Error creating burn transaction: {:?}", e);
-                std::process::exit(1);
-            });
-
-    pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
-        println!("failed to submit the burn transaction");
-        std::process::exit(1);
-    });
+    // let (_resource, transaction) =
+    //     create_burn_transaction(alice.clone(), resource.clone(), &config)
+    //         .await
+    //         .unwrap_or_else(|e| {
+    //             println!("Error creating burn transaction: {:?}", e);
+    //             std::process::exit(1);
+    //         });
+    //
+    // pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
+    //     println!("failed to submit the burn transaction");
+    //     std::process::exit(1);
+    // });
 }
