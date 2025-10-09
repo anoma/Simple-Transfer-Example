@@ -1,4 +1,5 @@
 pub mod approve;
+pub mod burn;
 pub mod mint;
 pub mod resource;
 pub mod split;

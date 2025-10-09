@@ -2,6 +2,7 @@ use crate::evm::approve::is_address_approved;
 use crate::evm::evm_calls::pa_submit_and_await;
 use crate::examples::shared::parse_address;
 use crate::requests::approve::ApproveRequest;
+use crate::requests::burn::{burn_from_request, BurnRequest};
 use crate::requests::mint::{mint_from_request, CreateRequest};
 use crate::requests::transfer::{transfer_from_request, TransferRequest};
 use crate::requests::Expand;
@@ -53,7 +54,7 @@ pub async fn mint(payload: Json<CreateRequest>, config: &State<AnomaPayConfig>) 
     };
 
     // submit the transaction
-    let Ok(tx_hash) = pa_submit_and_await(transaction).await else {
+    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
         return Json(json!({"error": "failed to submit mint transaction"}));
     };
 
@@ -63,9 +64,7 @@ pub async fn mint(payload: Json<CreateRequest>, config: &State<AnomaPayConfig>) 
 
 /// Handles a request from the user to mint.
 #[post("/api/transfer", data = "<payload>")]
-pub async fn transfer(
-    payload: Json<TransferRequest>,
-) -> Json<Value> {
+pub async fn transfer(payload: Json<TransferRequest>) -> Json<Value> {
     let request = payload.into_inner();
 
     // create the transaction
@@ -74,10 +73,31 @@ pub async fn transfer(
     };
 
     // submit the transaction
-    let Ok(tx_hash) = pa_submit_and_await(transaction).await else {
+    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
         return Json(json!({"error": "failed to submit transfer transaction"}));
     };
 
     // create the response
     Json(json!({"transaction_hash": tx_hash, "resource": created_resource.simplify()}))
+}
+
+/// Handles a request from the user to burn a resource.
+#[post("/api/burn", data = "<payload>")]
+pub async fn burn(payload: Json<BurnRequest>, config: &State<AnomaPayConfig>) -> Json<Value> {
+    let config: &AnomaPayConfig = config.inner();
+
+    let request = payload.into_inner();
+
+    // create the transaction
+    let Ok(transaction) = burn_from_request(request, config).await else {
+        return Json(json!({"error": "failed to create burn transaction"}));
+    };
+
+    // submit the transaction
+    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
+        return Json(json!({"error": "failed to submit burn transaction"}));
+    };
+
+    // create the response
+    Json(json!({"transaction_hash": tx_hash}))
 }

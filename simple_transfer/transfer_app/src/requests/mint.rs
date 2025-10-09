@@ -65,8 +65,7 @@ pub async fn json_example_mint_request(
     let address = read_address();
     let alice = Keychain::alice(address, Some(private_key));
 
-    let create_request =
-        mint_request_example(alice, config.default_amount as u128, config).await?;
+    let create_request = mint_request_example(alice, config.default_amount as u128, config).await?;
     let json_str = to_string_pretty(&create_request).map_err(|_| EncodingError)?;
     Ok(json_str)
 }

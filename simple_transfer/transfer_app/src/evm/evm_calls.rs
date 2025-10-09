@@ -35,10 +35,10 @@ async fn pa_submit_transaction(
 }
 
 /// Submit the transaction and wait for confirmations
-pub async fn pa_submit_and_await(transaction: Transaction) -> Result<String, EvmError> {
+pub async fn pa_submit_and_await(transaction: Transaction, wait: u64) -> Result<String, EvmError> {
     let transaction_builder = pa_submit_transaction(transaction).await?;
     let tx_hash = &transaction_builder.tx_hash();
-    tokio::time::sleep(Duration::from_secs(60)).await;
+    tokio::time::sleep(Duration::from_secs(wait)).await;
     Ok(tx_hash.0.encode_hex())
 }
 
