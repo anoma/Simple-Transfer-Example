@@ -22,10 +22,3 @@ pub fn alice_keychain() -> Keychain {
 pub fn bob_keychain() -> Keychain {
     Keychain::bob(None)
 }
-
-// /// Helper function to create a transfer transaction.
-// pub fn create_transfer_tx(sender: Keychain, receiver: Keychain) -> (Resource, Transaction) {
-//     // First a mint needs to happen to obtain a resource to transfer.
-//     let (resource, transaction) = create_mint_tx(sender.clone());
-//     create_transfer_transaction(sender, receiver, resource).unwrap()
-// }

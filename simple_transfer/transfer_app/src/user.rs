@@ -138,28 +138,6 @@ impl Keychain {
             private_key,
         }
     }
-
-    // pub fn new(evm_address: &str, private_key: Option<PrivateKeySigner>) -> Keychain {
-    //     let evm_address = evm_address.parse::<Address>().unwrap();
-    //
-    //     let (discovery_sk, discovery_pk) = random_keypair();
-    //     let (encryption_sk, encryption_pk) = random_keypair();
-    //
-    //     let auth_signing_key: AuthorizationSigningKey = AuthorizationSigningKey::new();
-    //     let nf_key: NullifierKey = NullifierKey::random_pair().0;
-    //
-    //     Keychain {
-    //         auth_signing_key,
-    //         nf_key,
-    //         discovery_sk,
-    //         discovery_pk,
-    //         encryption_sk,
-    //         encryption_pk,
-    //         evm_address,
-    //         private_key,
-    //     }
-    // }
-
     pub fn auth_verifying_key(&self) -> AuthorizationVerifyingKey {
         AuthorizationVerifyingKey::from_signing_key(&self.auth_signing_key)
     }
