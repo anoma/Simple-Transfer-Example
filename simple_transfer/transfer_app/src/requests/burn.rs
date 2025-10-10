@@ -1,5 +1,9 @@
 use crate::errors::TransactionError;
-use crate::errors::TransactionError::{ActionTreeError, InvalidKeyChain, MerkleProofError};
+use crate::errors::TransactionError::{
+    ActionError, ActionTreeError, ComplianceUnitCreateError, DecodingError, DeltaProofCreateError,
+    EncodingError, InvalidKeyChain, InvalidNullifierSizeError, LogicProofCreateError,
+    MerkleProofError,
+};
 use crate::evm::evm_calls::pa_merkle_path;
 use crate::examples::shared::{label_ref, random_nonce, value_ref, verify_transaction};
 use crate::requests::resource::JsonResource;
@@ -42,7 +46,8 @@ pub async fn burn_from_request(
     request: BurnRequest,
     config: &AnomaPayConfig,
 ) -> Result<Transaction, TransactionError> {
-    let burned_resource: Resource = Expand::expand(request.burned_resource);
+    let burned_resource: Resource =
+        Expand::expand(request.burned_resource).map_err(|_| DecodingError)?;
     let burner_nf_key: NullifierKey = NullifierKey::from_bytes(request.burner_nf_key.as_slice());
     let burner_auth_verifying_key: AuthorizationVerifyingKey =
         AuthorizationVerifyingKey::from_affine(request.burner_verifying_key);
@@ -55,22 +60,28 @@ pub async fn burn_from_request(
 
     let burned_resource_nullifier: Digest = burned_resource
         .nullifier(&burner_nf_key)
-        .ok_or(InvalidKeyChain)?;
+        .map_err(|_| InvalidKeyChain)?;
 
     let auth_signature: AuthorizationSignature =
-        AuthorizationSignature::from_bytes(request.auth_signature.as_slice());
+        AuthorizationSignature::from_bytes(request.auth_signature.as_slice())
+            .map_err(|_| EncodingError)?;
     ////////////////////////////////////////////////////////////////////////////
     // Construct the ephemeral resource to create
 
+    let nonce = burned_resource_nullifier
+        .as_bytes()
+        .try_into()
+        .map_err(|_| InvalidNullifierSizeError)?;
+
     let created_resource = Resource {
-        logic_ref: TransferLogic::verifying_key_as_bytes(),
+        logic_ref: TransferLogic::verifying_key(),
         label_ref: label_ref(config),
         quantity: burned_resource.quantity,
         value_ref: value_ref(CallType::Unwrap, burner_address.as_ref()),
         is_ephemeral: true,
-        nonce: burned_resource_nullifier.clone().as_bytes().to_vec(),
+        nonce,
         nk_commitment: burner_nf_key.commit(),
-        rand_seed: random_nonce().to_vec(),
+        rand_seed: random_nonce(),
     };
 
     let created_resource_commitment = created_resource.commitment();
@@ -85,10 +96,10 @@ pub async fn burn_from_request(
     // Create compliance proof
 
     let compliance_witness = ComplianceWitness::from_resources_with_path(
-        burned_resource.clone(),
+        burned_resource,
         burner_nf_key.clone(),
         merkle_proof,
-        created_resource.clone(),
+        created_resource,
     );
 
     // generate the proof in a separate thread
@@ -96,21 +107,28 @@ pub async fn burn_from_request(
     let compliance_unit =
         thread::spawn(move || ComplianceUnit::create(&compliance_witness_clone.clone()))
             .join()
-            .unwrap();
+            .map_err(|e| {
+                println!("prove thread panic: {:?}", e);
+                ComplianceUnitCreateError
+            })?
+            .map_err(|e| {
+                println!("proving error: {:?}", e);
+                ComplianceUnitCreateError
+            })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create logic proof
 
     let created_resource_path = action_tree
         .generate_path(&created_resource_commitment)
-        .ok_or(ActionTreeError)?;
+        .map_err(|_| ActionTreeError)?;
 
     let burned_resource_path = action_tree
         .generate_path(&burned_resource_nullifier)
-        .ok_or(ActionTreeError)?;
+        .map_err(|_| ActionTreeError)?;
 
     let created_logic_witness: TransferLogic = TransferLogic::consume_persistent_resource_logic(
-        burned_resource.clone(),
+        burned_resource,
         burned_resource_path,
         burner_nf_key.clone(),
         burner_auth_verifying_key,
@@ -123,10 +141,17 @@ pub async fn burn_from_request(
     let created_logic_witness_clone = created_logic_witness.clone();
     let created_logic_proof = thread::spawn(move || created_logic_witness_clone.prove())
         .join()
-        .unwrap();
-    //
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
+
     let burned_logic_witness: TransferLogic = TransferLogic::burn_resource_logic(
-        created_resource.clone(),
+        created_resource,
         created_resource_path,
         config.forwarder_address.to_vec(),
         config.token_address.to_vec(),
@@ -139,7 +164,14 @@ pub async fn burn_from_request(
     let burned_resource_logic_clone = burned_logic_witness.clone();
     let burned_logic_proof = thread::spawn(move || burned_resource_logic_clone.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create actions for transaction
@@ -147,11 +179,16 @@ pub async fn burn_from_request(
     let action: Action = Action::new(
         vec![compliance_unit],
         vec![burned_logic_proof, created_logic_proof],
-    );
+    )
+    .map_err(|_| ActionError)?;
 
-    let delta_witness = DeltaWitness::from_bytes(&compliance_witness.rcv);
-    let mut transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
-    transaction.generate_delta_proof();
+    let delta_witness =
+        DeltaWitness::from_bytes(&compliance_witness.rcv).map_err(|_| LogicProofCreateError)?;
+    let transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
+
+    let transaction = transaction
+        .generate_delta_proof()
+        .map_err(|_| DeltaProofCreateError)?;
 
     verify_transaction(transaction.clone())?;
     Ok(transaction)

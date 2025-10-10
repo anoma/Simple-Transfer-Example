@@ -1,5 +1,8 @@
 use crate::errors::TransactionError;
-use crate::errors::TransactionError::{ActionTreeError, InvalidKeyChain, MerkleProofError};
+use crate::errors::TransactionError::{
+    ActionError, ActionTreeError, ComplianceUnitCreateError, DecodingError, DeltaProofCreateError,
+    EncodingError, InvalidKeyChain, LogicProofCreateError, MerkleProofError,
+};
 use crate::evm::evm_calls::pa_merkle_path;
 use crate::examples::shared::verify_transaction;
 use crate::requests::resource::JsonResource;
@@ -41,13 +44,17 @@ pub async fn transfer_from_request(
     request: TransferRequest,
 ) -> Result<(Resource, Transaction), TransactionError> {
     // convert some bytes into their proper data structure from the request.
-    let transferred_resource: Resource = Expand::expand(request.transferred_resource);
-    let created_resource: Resource = Expand::expand(request.created_resource);
+    let transferred_resource: Resource =
+        Expand::expand(request.transferred_resource).map_err(|_| DecodingError)?;
+    let created_resource: Resource =
+        Expand::expand(request.created_resource).map_err(|_| DecodingError)?;
     let sender_nf_key: NullifierKey = NullifierKey::from_bytes(request.sender_nf_key.as_slice());
     let sender_auth_verifying_key: AuthorizationVerifyingKey =
         AuthorizationVerifyingKey::from_affine(request.sender_verifying_key);
     let auth_signature: AuthorizationSignature =
-        AuthorizationSignature::from_bytes(request.auth_signature.as_slice());
+        AuthorizationSignature::from_bytes(request.auth_signature.as_slice())
+            .map_err(|_| EncodingError)?;
+
     let receiver_discovery_pk = request.receiver_discovery_pk;
     let receiver_encryption_pk = request.receiver_encryption_pk;
 
@@ -59,7 +66,7 @@ pub async fn transfer_from_request(
 
     let transferred_resource_nullifier = transferred_resource
         .nullifier(&sender_nf_key)
-        .ok_or(InvalidKeyChain)?;
+        .map_err(|_| InvalidKeyChain)?;
 
     let created_resource_commitment = created_resource.commitment();
 
@@ -75,10 +82,10 @@ pub async fn transfer_from_request(
     // Create compliance proof
 
     let compliance_witness = ComplianceWitness::from_resources_with_path(
-        transferred_resource.clone(),
+        transferred_resource,
         sender_nf_key.clone(),
         merkle_proof,
-        created_resource.clone(),
+        created_resource,
     );
 
     // generate the proof in a separate thread
@@ -86,17 +93,24 @@ pub async fn transfer_from_request(
     let compliance_unit =
         thread::spawn(move || ComplianceUnit::create(&compliance_witness_clone.clone()))
             .join()
-            .unwrap();
+            .map_err(|e| {
+                println!("prove thread panic: {:?}", e);
+                ComplianceUnitCreateError
+            })?
+            .map_err(|e| {
+                println!("proving error: {:?}", e);
+                ComplianceUnitCreateError
+            })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create logic proof
 
     let consumed_resource_path = action_tree
         .generate_path(&transferred_resource_nullifier)
-        .ok_or(ActionTreeError)?;
+        .map_err(|_| ActionTreeError)?;
 
     let transferred_logic_witness: TransferLogic = TransferLogic::consume_persistent_resource_logic(
-        transferred_resource.clone(),
+        transferred_resource,
         consumed_resource_path,
         sender_nf_key.clone(),
         sender_auth_verifying_key,
@@ -109,14 +123,21 @@ pub async fn transfer_from_request(
     let transferred_logic_witness_clone = transferred_logic_witness.clone();
     let transferred_logic_proof = thread::spawn(move || transferred_logic_witness_clone.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     let created_resource_path = action_tree
         .generate_path(&created_resource_commitment)
-        .ok_or(ActionTreeError)?;
+        .map_err(|_| ActionTreeError)?;
 
     let created_logic_witness: TransferLogic = TransferLogic::create_persistent_resource_logic(
-        created_resource.clone(),
+        created_resource,
         created_resource_path,
         &receiver_discovery_pk,
         receiver_encryption_pk,
@@ -128,7 +149,14 @@ pub async fn transfer_from_request(
     let created_logic_witness_clone = created_logic_witness.clone();
     let created_logic_proof = thread::spawn(move || created_logic_witness_clone.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create actions for transaction
@@ -136,14 +164,19 @@ pub async fn transfer_from_request(
     let action: Action = Action::new(
         vec![compliance_unit],
         vec![transferred_logic_proof, created_logic_proof],
-    );
+    )
+    .map_err(|_| ActionError)?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create delta proof
 
-    let delta_witness = DeltaWitness::from_bytes(&compliance_witness.rcv);
-    let mut transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
-    transaction.generate_delta_proof();
+    let delta_witness =
+        DeltaWitness::from_bytes(&compliance_witness.rcv).map_err(|_| LogicProofCreateError)?;
+    let transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
+
+    let transaction = transaction
+        .generate_delta_proof()
+        .map_err(|_| DeltaProofCreateError)?;
 
     verify_transaction(transaction.clone())?;
     Ok((created_resource, transaction))

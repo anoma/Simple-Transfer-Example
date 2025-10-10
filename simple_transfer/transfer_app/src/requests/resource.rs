@@ -1,4 +1,4 @@
-use crate::requests::Expand;
+use crate::requests::{to_array, to_digest, Expand};
 use arm::nullifier_key::NullifierKeyCommitment;
 use arm::resource::Resource;
 use serde::{Deserialize, Serialize};
@@ -28,31 +28,36 @@ pub struct JsonResource {
 
 impl Expand for Resource {
     type Struct = JsonResource;
+    type Error = Box<dyn std::error::Error>;
 
     fn simplify(&self) -> JsonResource {
         JsonResource {
-            logic_ref: self.logic_ref.clone(),
-            label_ref: self.label_ref.clone(),
+            logic_ref: self.logic_ref.clone().as_bytes().to_vec(),
+            label_ref: self.label_ref.clone().as_bytes().to_vec(),
             quantity: self.quantity,
-            value_ref: self.value_ref.clone(),
+            value_ref: self.value_ref.clone().as_bytes().to_vec(),
             is_ephemeral: self.is_ephemeral,
-            nonce: self.nonce.clone(),
-            nk_commitment: self.nk_commitment.inner().to_vec(),
-            rand_seed: self.rand_seed.clone(),
+            nonce: self.nonce.clone().to_vec(),
+            nk_commitment: self.nk_commitment.as_bytes().to_vec(),
+            rand_seed: self.rand_seed.clone().to_vec(),
         }
     }
 
-    fn expand(json_resource: JsonResource) -> Self {
-        let nk_commitment = NullifierKeyCommitment::from(json_resource.nk_commitment);
-        Resource {
-            logic_ref: json_resource.logic_ref,
-            label_ref: json_resource.label_ref,
+    fn expand(json_resource: JsonResource) -> Result<Self, Self::Error> {
+        let nk_commitment_bytes: [u8; 32] = to_array(json_resource.nk_commitment, "nk_commitment")?;
+
+        let nk_commitment = NullifierKeyCommitment::from_bytes(&nk_commitment_bytes)
+            .map_err(|_| "invalid nk_commitment format")?;
+
+        Ok(Resource {
+            logic_ref: to_digest(json_resource.logic_ref, "logic_ref")?,
+            label_ref: to_digest(json_resource.label_ref, "label_ref")?,
             quantity: json_resource.quantity,
-            value_ref: json_resource.value_ref,
+            value_ref: to_digest(json_resource.value_ref, "value_ref")?,
             is_ephemeral: json_resource.is_ephemeral,
-            nonce: json_resource.nonce,
+            nonce: to_array(json_resource.nonce, "nonce")?,
             nk_commitment,
-            rand_seed: json_resource.rand_seed,
-        }
+            rand_seed: to_array(json_resource.rand_seed, "rand_seed")?,
+        })
     }
 }

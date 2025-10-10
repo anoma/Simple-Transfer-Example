@@ -1,5 +1,6 @@
 use crate::errors::TransactionError;
 use crate::errors::TransactionError::VerificationFailure;
+use crate::permit2::{permit_witness_transfer_from_signature, Permit2Data};
 use crate::user::Keychain;
 use crate::AnomaPayConfig;
 use alloy::primitives::{Address, Signature, B256, U256};
@@ -7,8 +8,8 @@ use alloy::signers::local::PrivateKeySigner;
 use arm::action_tree::MerkleTree;
 use arm::evm::CallType;
 use arm::transaction::Transaction;
-use arm::utils::{hash_bytes, words_to_bytes};
-use evm_protocol_adapter_bindings::permit2::permit_witness_transfer_from_signature;
+use arm::utils::hash_bytes;
+use arm::Digest;
 use rand::Rng;
 use std::env;
 
@@ -30,12 +31,7 @@ pub fn random_nonce() -> [u8; 32] {
 
 /// Verifies a transaction. Returns an error if verification failed.
 pub fn verify_transaction(transaction: Transaction) -> Result<(), TransactionError> {
-    let verified = transaction.verify();
-    if !verified {
-        Err(VerificationFailure)
-    } else {
-        Ok(())
-    }
+    transaction.verify().map_err(|_| VerificationFailure)
 }
 
 /// The value ref for a created resource in a mint transaction needs to hold the verifying key of
@@ -46,7 +42,7 @@ pub fn verify_transaction(transaction: Transaction) -> Result<(), TransactionErr
 /// receiver.
 ///
 /// The intuition here is that the value ref defines the owner of the resource.
-pub fn value_ref_created(keychain: &Keychain) -> Vec<u8> {
+pub fn value_ref_created(keychain: &Keychain) -> Digest {
     hash_bytes(&keychain.auth_verifying_key().to_bytes())
 }
 
@@ -54,7 +50,7 @@ pub fn value_ref_created(keychain: &Keychain) -> Vec<u8> {
 /// value allows us to distinguish between wrapped USDC or USDT tokens, for example. The
 /// forwarder contract is used for multiple tokens, so the tuple (forwarder address, token
 /// contract) uniquely identifies a resource.
-pub fn label_ref(config: &AnomaPayConfig) -> Vec<u8> {
+pub fn label_ref(config: &AnomaPayConfig) -> Digest {
     hash_bytes(
         &[
             config.forwarder_address.to_vec(),
@@ -77,7 +73,7 @@ pub fn read_address() -> String {
     env::var("USER_ADDRESS").expect("env var USER_ADDRESS not found")
 }
 
-pub fn value_ref(call_type: CallType, user_addr: &[u8]) -> Vec<u8> {
+pub fn value_ref(call_type: CallType, user_addr: &[u8]) -> Digest {
     let mut data = vec![call_type as u8];
     data.extend_from_slice(user_addr);
     hash_bytes(&data)
@@ -90,17 +86,29 @@ pub async fn create_permit_signature(
     amount: u128,
     config: &AnomaPayConfig,
 ) -> Signature {
-    let action_tree_root: Vec<u32> = action_tree.root();
-    let action_tree_encoded: &[u8] = words_to_bytes(action_tree_root.as_slice());
+    let action_tree_root: Digest = action_tree.root();
+    let action_tree_encoded: &[u8] = action_tree_root.as_ref();
 
-    permit_witness_transfer_from_signature(
-        private_key,
-        config.token_address,
-        U256::from(amount),
-        U256::from_be_bytes(nullifier),
-        U256::from(config.deadline),
-        config.forwarder_address,
-        B256::from_slice(action_tree_encoded), // Witness
-    )
-    .await
+    let x = Permit2Data {
+        chain_id: 11155111,
+        token: config.token_address,
+        amount: U256::from(amount),
+        nonce: U256::from_be_bytes(nullifier),
+        deadline: U256::from(config.deadline),
+        spender: config.forwarder_address,
+        action_tree_root: B256::from_slice(action_tree_encoded),
+    };
+
+    permit_witness_transfer_from_signature(private_key, x).await
+
+    // permit_witness_transfer_from_signature(
+    //     private_key,
+    //     config.token_address,
+    //     U256::from(amount),
+    //     U256::from_be_bytes(nullifier),
+    //     U256::from(config.deadline),
+    //     config.forwarder_address,
+    //     B256::from_slice(action_tree_encoded), // Witness
+    // )
+    // .await
 }

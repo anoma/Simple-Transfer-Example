@@ -1,5 +1,8 @@
 use crate::errors::TransactionError;
-use crate::errors::TransactionError::{InvalidKeyChain, MerklePathError, MerkleProofError};
+use crate::errors::TransactionError::{
+    ActionError, ComplianceUnitCreateError, DecodingError, DeltaProofCreateError, EncodingError,
+    InvalidKeyChain, LogicProofCreateError, MerklePathError, MerkleProofError,
+};
 use crate::evm::evm_calls::pa_merkle_path;
 use crate::examples::shared::verify_transaction;
 use crate::requests::resource::JsonResource;
@@ -43,10 +46,14 @@ pub struct SplitRequest {
 
 /// Execute a burn transaction from a burn request.
 pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, TransactionError> {
-    let to_split_resource: Resource = Expand::expand(request.to_split_resource);
-    let created_resource: Resource = Expand::expand(request.created_resource);
-    let padding_resource: Resource = Expand::expand(request.padding_resource);
-    let remainder_resource: Resource = Expand::expand(request.remainder_resource);
+    let to_split_resource: Resource =
+        Expand::expand(request.to_split_resource).map_err(|_| DecodingError)?;
+    let created_resource: Resource =
+        Expand::expand(request.created_resource).map_err(|_| DecodingError)?;
+    let padding_resource: Resource =
+        Expand::expand(request.padding_resource).map_err(|_| DecodingError)?;
+    let remainder_resource: Resource =
+        Expand::expand(request.remainder_resource).map_err(|_| DecodingError)?;
     let receiver_discovery_pk = request.receiver_discovery_pk;
     let receiver_encryption_pk = request.receiver_encryption_pk;
     let sender_nf_key: NullifierKey = NullifierKey::from_bytes(request.sender_nf_key.as_slice());
@@ -54,18 +61,19 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
         AuthorizationVerifyingKey::from_affine(request.sender_verifying_key);
 
     let auth_signature: AuthorizationSignature =
-        AuthorizationSignature::from_bytes(request.auth_signature.as_slice());
+        AuthorizationSignature::from_bytes(request.auth_signature.as_slice())
+            .map_err(|_| EncodingError)?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create the action tree
 
     let padding_resource_nullifier = padding_resource
         .nullifier(&NullifierKey::default())
-        .ok_or(InvalidKeyChain)?;
+        .map_err(|_| InvalidKeyChain)?;
 
     let to_split_resource_nullifier = to_split_resource
         .nullifier(&sender_nf_key)
-        .ok_or(InvalidKeyChain)?;
+        .map_err(|_| InvalidKeyChain)?;
 
     let created_resource_commitment = created_resource.commitment();
 
@@ -89,10 +97,10 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
     // Create compliance proof
 
     let compliance_witness_created = ComplianceWitness::from_resources_with_path(
-        to_split_resource.clone(),
+        to_split_resource,
         sender_nf_key.clone(),
         merkle_proof_to_split,
-        created_resource.clone(),
+        created_resource,
     );
 
     // generate the proof in a separate thread
@@ -100,13 +108,20 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
     let compliance_unit_created =
         thread::spawn(move || ComplianceUnit::create(&compliance_witness_created_clone.clone()))
             .join()
-            .unwrap();
+            .map_err(|e| {
+                println!("prove thread panic: {:?}", e);
+                ComplianceUnitCreateError
+            })?
+            .map_err(|e| {
+                println!("proving error: {:?}", e);
+                ComplianceUnitCreateError
+            })?;
 
     let compliance_witness_remainder_resource = ComplianceWitness::from_resources_with_path(
-        padding_resource.clone(),
+        padding_resource,
         NullifierKey::default(),
         MerklePath::default(),
-        remainder_resource.clone(),
+        remainder_resource,
     );
 
     // generate the proof in a separate thread
@@ -115,8 +130,8 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
         ComplianceUnit::create(&compliance_witness_remainder_resource_clone.clone())
     })
     .join()
-    .unwrap();
-
+    .unwrap()
+    .map_err(|_| ComplianceUnitCreateError)?;
     ////////////////////////////////////////////////////////////////////////////
     // Create logic proof
 
@@ -125,10 +140,10 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
 
     let to_split_resource_path = action_tree
         .generate_path(&to_split_resource_nullifier)
-        .ok_or(MerklePathError)?;
+        .map_err(|_| MerklePathError)?;
 
     let to_split_logic_witness: TransferLogic = TransferLogic::consume_persistent_resource_logic(
-        to_split_resource.clone(),
+        to_split_resource,
         to_split_resource_path.clone(),
         sender_nf_key.clone(),
         sender_auth_verifying_key,
@@ -138,17 +153,24 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
     // generate the proof in a separate thread
     let to_split_logic_proof = thread::spawn(move || to_split_logic_witness.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     //--------------------------------------------------------------------------
     // padding proof
 
     let padding_resource_path = action_tree
         .generate_path(&padding_resource_nullifier)
-        .ok_or(MerklePathError)?;
+        .map_err(|_| MerklePathError)?;
 
     let padding_logic_witness = TrivialLogicWitness::new(
-        padding_resource.clone(),
+        padding_resource,
         padding_resource_path.clone(),
         NullifierKey::default(),
         true,
@@ -156,17 +178,24 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
 
     let padding_logic_proof = thread::spawn(move || padding_logic_witness.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     //--------------------------------------------------------------------------
     // created proof
 
     let created_resource_path = action_tree
         .generate_path(&created_resource_commitment)
-        .ok_or(MerklePathError)?;
+        .map_err(|_| MerklePathError)?;
 
     let created_logic_witness = TransferLogic::create_persistent_resource_logic(
-        created_resource.clone(),
+        created_resource,
         created_resource_path,
         &receiver_discovery_pk,
         receiver_encryption_pk,
@@ -174,17 +203,24 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
 
     let created_logic_proof = thread::spawn(move || created_logic_witness.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     //--------------------------------------------------------------------------
     // remainder proof
 
     let remainder_resource_path = action_tree
         .generate_path(&remainder_resource_commitment)
-        .ok_or(MerklePathError)?;
+        .map_err(|_| MerklePathError)?;
 
     let remainder_logic_witness = TransferLogic::create_persistent_resource_logic(
-        remainder_resource.clone(),
+        remainder_resource,
         remainder_resource_path,
         &receiver_discovery_pk,
         receiver_encryption_pk,
@@ -192,7 +228,14 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
 
     let remainder_logic_proof = thread::spawn(move || remainder_logic_witness.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create actions for transaction
@@ -205,14 +248,20 @@ pub async fn split_from_request(request: SplitRequest) -> Result<Transaction, Tr
             padding_logic_proof,
             remainder_logic_proof,
         ],
-    );
+    )
+    .map_err(|_| ActionError)?;
 
     let delta_witness: DeltaWitness = DeltaWitness::from_bytes_vec(&[
         compliance_witness_created.rcv,
         compliance_witness_remainder_resource.rcv,
-    ]);
-    let mut transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
-    transaction.generate_delta_proof();
+    ])
+    .map_err(|_| LogicProofCreateError)?;
+
+    let transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
+
+    let transaction = transaction
+        .generate_delta_proof()
+        .map_err(|_| DeltaProofCreateError)?;
 
     verify_transaction(transaction.clone())?;
     Ok(transaction)
