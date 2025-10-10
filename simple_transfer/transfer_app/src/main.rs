@@ -7,12 +7,14 @@ mod tests;
 mod user;
 mod webserver;
 
+use crate::evm::evm_calls::pa_merkle_path;
 use crate::requests::mint::json_example_mint_request;
 use crate::webserver::{
     all_options, burn, default_error, health, is_approved, mint, split, transfer, unprocessable,
     Cors,
 };
 use alloy::primitives::Address;
+use risc0_zkvm::Digest;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{catchers, launch, routes};
 use std::env;
@@ -36,6 +38,7 @@ struct AnomaPayConfig {
     // api key for the ethereum rpc
     #[serde(skip_serializing)]
     ethereum_rpc_api_key: String,
+    indexer_address: String,
 }
 
 /// Reads the environment for required values and sets them into the config.
@@ -61,6 +64,7 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
         .map_err(|_| "FORWARDER_ADDRESS invalid")?;
 
     let ethereum_rpc = env::var("RPC_URL").map_err(|_| "RPC_URL not set")?;
+    let indexer_address = env::var("INDEXER_ADDRESS").map_err(|_| "INDEXER_ADDRESS not set")?;
     let ethereum_rpc_api_key = env::var("API_KEY").map_err(|_| "API_KEY not set")?;
 
     Ok(AnomaPayConfig {
@@ -71,6 +75,7 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
         forwarder_address,
         ethereum_rpc,
         ethereum_rpc_api_key,
+        indexer_address,
     })
 }
 #[launch]
@@ -93,6 +98,16 @@ async fn rocket() -> _ {
         println!("{}", json_str);
         std::process::exit(0);
     }
+
+    let str = "0x40fb856e5f938fbddbba00c01c16ecd90e61405235986970708c4dd01e092e26";
+    let bytes = str.strip_prefix("0x").unwrap_or(str);
+    let bz = hex::decode(bytes).unwrap();
+    let arr = bz.try_into().unwrap();
+    let digest = Digest::from_bytes(arr);
+    println!("{:?}", digest);
+    let res = pa_merkle_path(digest).await;
+    println!("{:?}", res);
+    std::process::exit(0);
 
     rocket::build()
         .manage(config)

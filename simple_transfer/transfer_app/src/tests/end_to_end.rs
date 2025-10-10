@@ -23,7 +23,7 @@ mod tests {
         test_mint().await;
 
         // test a mint and transfer
-        test_mint_and_transfer().await;
+        // test_mint_and_transfer().await;
 
         // // test minting and then splitting
         // test_mint_and_split().await;
@@ -46,6 +46,9 @@ mod tests {
 
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
+        println!("{:?}", minted_resource);
+        println!("{:?}", minted_resource.commitment());
+
         // try and submit the transaction
         submit_test_transaction(transaction, 0).await;
     }

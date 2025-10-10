@@ -1,5 +1,6 @@
 use crate::evm::errors::EvmError;
-use crate::evm::errors::EvmError::EvmSubmitError;
+use crate::evm::errors::EvmError::{EvmSubmitError, IndexerError};
+use alloy::hex::ToHexExt;
 use alloy::network::Ethereum;
 use alloy::providers::PendingTransactionBuilder;
 use arm::merkle_path::MerklePath;
@@ -7,7 +8,11 @@ use arm::transaction::Transaction;
 use arm::Digest;
 use evm_protocol_adapter_bindings::call::protocol_adapter;
 use evm_protocol_adapter_bindings::conversion::ProtocolAdapter;
-use hex::ToHex;
+use futures::TryFutureExt;
+use reqwest::Error;
+use serde::Deserialize;
+use serde_with::base64::Base64;
+use serde_with::serde_as;
 use std::time::Duration;
 
 /// Submit a transaction to the protocol adapter, and wait for confirmation.
@@ -25,7 +30,7 @@ async fn pa_submit_transaction(
 
     println!(
         "submitted transaction {}",
-        builder.tx_hash().encode_hex::<String>()
+        ToHexExt::encode_hex(&builder.tx_hash())
     );
     Ok(builder)
 }
@@ -35,7 +40,7 @@ pub async fn pa_submit_and_await(transaction: Transaction, wait: u64) -> Result<
     let transaction_builder = pa_submit_transaction(transaction).await?;
     let tx_hash = &transaction_builder.tx_hash();
     tokio::time::sleep(Duration::from_secs(wait)).await;
-    Ok(tx_hash.0.encode_hex())
+    Ok(ToHexExt::encode_hex(&tx_hash.0))
 }
 
 // /// Calls out to the protocol adapter to obtain the merkle proof for a given resource commitment.
@@ -50,23 +55,50 @@ pub async fn pa_submit_and_await(transaction: Transaction, wait: u64) -> Result<
 //         .map_err(|_| EvmError::MerklePathError)
 // }
 
+#[serde_as]
+#[derive(Deserialize, Debug, PartialEq)]
+struct ProofResponse {
+    root: String,
+    frontiers: Vec<Frontier>,
+}
+
+#[serde_as]
+#[derive(Deserialize, Debug, PartialEq)]
+struct Frontier {
+    #[serde_as(as = "Base64")]
+    neighbour: Vec<u8>,
+    is_left: bool,
+}
+
+/// Fetches the merkle path from the indexer and returns its parsed response.
+/// This still has to be converted into a real MerklePath struct.
+async fn merkle_path_from_indexer(commitment: Digest) -> Result<ProofResponse, Error> {
+    let hash = ToHexExt::encode_hex(&commitment);
+    let url = format!("http://localhost:4000/generate_proof/0x{}", hash);
+    let response = reqwest::get(&url).await?;
+    response.json().await
+}
+
 /// Given a commitment of a resource, looks up the merkle path for this resource.
-pub async fn pa_merkle_path(_commitment: Digest) -> Result<MerklePath, EvmError> {
-    // let merkle_proof: merkleProofReturn = pa_merkle_proof(commitment).await?;
-    //
-    // let auth_path_vec: Vec<(Vec<u32>, bool)> = merkle_proof
-    //     .siblings
-    //     .into_iter()
-    //     .enumerate()
-    //     .map(|(i, sibling_b256)| {
-    //         let sibling_digest = Digest::from_bytes(sibling_b256.0);
-    //         let sibling = bytes_to_words(sibling_digest.as_bytes());
-    //         let pa_sibling_is_left = !merkle_proof.directionBits.bit(i);
-    //         let arm_leaf_is_on_right = pa_sibling_is_left;
-    //         (sibling, arm_leaf_is_on_right)
-    //     })
-    //     .collect();
-    //
-    // Ok(MerklePath::from_path(auth_path_vec.as_slice()))
-    Ok(MerklePath::default())
+pub async fn pa_merkle_path(commitment: Digest) -> Result<MerklePath, EvmError> {
+    let merkle_path_response = merkle_path_from_indexer(commitment)
+        .map_err(|_| IndexerError)
+        .await?;
+
+    let merkle_path: Result<Vec<(Digest, bool)>, EvmError> = merkle_path_response
+        .frontiers
+        .into_iter()
+        .map(|frontier| {
+            println!("frontier: {:?}", frontier.neighbour);
+            let bytes: [u8; 48] = frontier.neighbour.as_slice().try_into().map_err(|e| {
+                println!("{:?}", e);
+                IndexerError
+            })?;
+            let sibling = Digest::from_bytes(bytes);
+            Ok((sibling, frontier.is_left))
+        })
+        .collect();
+    let merkle_path = merkle_path?;
+
+    Ok(MerklePath::from_path(merkle_path.as_slice()))
 }
