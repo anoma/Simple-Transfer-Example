@@ -19,21 +19,36 @@ mod tests {
     /// This functions forces the tests to run in sequence.
     #[tokio::test]
     async fn run_scenarios() {
-        // // test a mint and transfer
-        // test_mint_and_transfer().await;
-        //
+        // test a simple mint transfer
+        test_mint().await;
+
+        // test a mint and transfer
+        test_mint_and_transfer().await;
+
         // // test minting and then splitting
         // test_mint_and_split().await;
 
-        // test minting and burning
-        test_mint_and_burn().await;
-
-        // test mint, split and then burn
-        test_mint_and_split_and_burn().await;
+        // // test minting and burning
+        // test_mint_and_burn().await;
+        //
+        // // test mint, split and then burn
+        // test_mint_and_split_and_burn().await;
     }
 
     ////////////////////////////////////////////////////////////////////////////
     // Scenarios
+
+    /// Create a mint transaction, and then transfer the resource to another user.
+    async fn test_mint() {
+        let config = load_config().expect("failed to load config in test");
+        // create a keychain with a private key
+        let alice = alice_keychain();
+
+        // create a test mint transaction for alice
+        let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
+        // try and submit the transaction
+        submit_test_transaction(transaction, 0).await;
+    }
 
     /// Create a mint transaction, and then transfer the resource to another user.
     async fn test_mint_and_transfer() {
@@ -148,11 +163,12 @@ mod tests {
     ) -> (Resource, Transaction) {
         // create the transaction and assert it did not fail.
         let result = create_mint_transaction(minter.clone(), 2, &config).await;
+        println!("{:?}", result);
         assert!(result.is_ok());
 
         // assert the created transaction verifies
         let (minted_resource, transaction) = result.unwrap();
-        assert!(transaction.clone().verify());
+        assert!(transaction.clone().verify().is_ok());
         (minted_resource, transaction)
     }
 
@@ -168,7 +184,7 @@ mod tests {
 
         // assert the created transaction verifies
         let (_burned_resource, transaction) = result.unwrap();
-        assert!(transaction.clone().verify());
+        assert!(transaction.clone().verify().is_ok());
         transaction
     }
 
@@ -188,13 +204,14 @@ mod tests {
 
         // assert the created transaction verifies
         let (sent_resource, created_resource, transaction) = result.unwrap();
-        assert!(transaction.clone().verify());
+        assert!(transaction.clone().verify().is_ok());
         (sent_resource, created_resource, transaction)
     }
 
     /// Given a transaction, submits it to the PA and waits for it to complete.
     async fn submit_test_transaction(transaction: Transaction, wait: u64) {
         let result = pa_submit_and_await(transaction, wait).await;
+        println!("{:?}", result);
         assert!(result.is_ok());
     }
 }

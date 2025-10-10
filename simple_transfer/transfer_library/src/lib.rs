@@ -11,6 +11,7 @@ use arm::{
 use hex::FromHex;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+
 use transfer_witness::{
     AuthorizationInfo, EncryptionInfo, ForwarderInfo, PermitInfo, SimpleTransferWitness,
 };
@@ -18,11 +19,11 @@ use transfer_witness::{
 pub const SIMPLE_TRANSFER_ELF: &[u8] = include_bytes!("../elf/simple-transfer-guest.bin");
 lazy_static! {
     pub static ref SIMPLE_TRANSFER_ID: Digest =
-        Digest::from_hex("f84f32182ddddbafd6c5f435578c3bb07b50a8014b2551ecebeb9916e2639cc5")
+        Digest::from_hex("81f8104fe367f5018a4bb0b259531be9ab35d3f1d51dea46c204bee154d5ee9e")
             .unwrap();
 }
 
-#[derive(Clone, Default, Deserialize, Serialize, Debug)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct TransferLogic {
     witness: SimpleTransferWitness,
 }

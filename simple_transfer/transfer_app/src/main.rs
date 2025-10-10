@@ -1,10 +1,12 @@
 mod errors;
 mod evm;
 mod examples;
+mod permit2;
 mod requests;
 mod tests;
 mod user;
 mod webserver;
+
 use crate::requests::mint::json_example_mint_request;
 use crate::webserver::{
     all_options, burn, default_error, health, is_approved, mint, split, transfer, unprocessable,
