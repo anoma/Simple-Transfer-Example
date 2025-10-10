@@ -5,6 +5,7 @@ use alloy::network::Ethereum;
 use alloy::providers::PendingTransactionBuilder;
 use arm::merkle_path::MerklePath;
 use arm::transaction::Transaction;
+use arm::utils::bytes_to_words;
 use arm::Digest;
 use evm_protocol_adapter_bindings::call::protocol_adapter;
 use evm_protocol_adapter_bindings::conversion::ProtocolAdapter;
@@ -85,20 +86,37 @@ pub async fn pa_merkle_path(commitment: Digest) -> Result<MerklePath, EvmError> 
         .map_err(|_| IndexerError)
         .await?;
 
-    let merkle_path: Result<Vec<(Digest, bool)>, EvmError> = merkle_path_response
+    let x: Result<Vec<(Vec<u32>, bool)>, EvmError> = merkle_path_response
         .frontiers
         .into_iter()
         .map(|frontier| {
-            println!("frontier: {:?}", frontier.neighbour);
-            let bytes: [u8; 48] = frontier.neighbour.as_slice().try_into().map_err(|e| {
-                println!("{:?}", e);
-                IndexerError
-            })?;
-            let sibling = Digest::from_bytes(bytes);
+            let bytes: [u8; 48] = frontier
+                .neighbour
+                .as_slice()
+                .try_into()
+                .map_err(|_| IndexerError)?;
+            println!("{:?}", bytes);
+            let sibling_digest = Digest::from(bytes);
+            let sibling = bytes_to_words(sibling_digest.as_bytes());
             Ok((sibling, frontier.is_left))
         })
         .collect();
-    let merkle_path = merkle_path?;
-
-    Ok(MerklePath::from_path(merkle_path.as_slice()))
+    // Ok(proof_data)
+    // let merkle_proof: merkleProofReturn = pa_merkle_proof(commitment).await?;
+    //
+    // let auth_path_vec: Vec<(Vec<u32>, bool)> = merkle_proof
+    //     .siblings
+    //     .into_iter()
+    //     .enumerate()
+    //     .map(|(i, sibling_b256)| {
+    //         let sibling_digest = Digest::from_bytes(sibling_b256.0);
+    //         let sibling = bytes_to_words(sibling_digest.as_bytes());
+    //         let pa_sibling_is_left = !merkle_proof.directionBits.bit(i);
+    //         let arm_leaf_is_on_right = pa_sibling_is_left;
+    //         (sibling, arm_leaf_is_on_right)
+    //     })
+    //     .collect();
+    //
+    // Ok(MerklePath::from_path(auth_path_vec.as_slice()))
+    Ok(MerklePath::default())
 }
