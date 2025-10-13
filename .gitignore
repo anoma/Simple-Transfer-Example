@@ -1,6 +1,9 @@
-# Rust build artifacts
+# Directories
+cache/
+out/
 /target/
 Cargo.lock
+node_modules/
 
 # Environment and secret files
 env.secret
@@ -30,3 +33,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Contract broadcasts
+!broadcast
+contracts/broadcast/*
+contracts/broadcast/*/31337/

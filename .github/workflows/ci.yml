@@ -1,0 +1,74 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    name: Contracts
+    runs-on: macos-latest
+    env:
+      FOUNDRY_PROFILE: ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          cache: true
+
+      - name: Show Foundry version
+        run: forge --version
+
+      - name: Run Forge Lint
+        run: forge lint --deny-warnings
+        working-directory: ./contracts
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Show Bun version
+        run: bun --version
+        working-directory: ./contracts
+
+      - name: Install Solhint
+        run: bun install solhint
+        working-directory: ./contracts
+
+      - name: Run Solhint in `src`
+        run: bunx --bun solhint --config .solhint.json 'src/**/*.sol'
+        working-directory: ./contracts
+        id: solhint-src
+
+      - name: Run Solhint in `test` dir
+        run: bunx --bun solhint --config .solhint.other.json 'test/**/*.sol'
+        working-directory: ./contracts
+        id: solhint-test
+
+      - name: Run Solhint in `script` dir
+        run: bunx --bun solhint --config .solhint.other.json 'script/**/*.sol'
+        working-directory: ./contracts
+        id: solhint-script
+
+      - name: Run Forge build
+        run: forge build --sizes --ast
+        working-directory: ./contracts
+
+      - name: Run Forge tests
+        run: forge test --gas-report
+        env:
+          API_KEY_ALCHEMY: ${{ secrets.API_KEY_ALCHEMY }}
+        working-directory: ./contracts
+
+      - name: Run Forge coverage
+        run: forge coverage --no-match-coverage "(script|test|draft|forwarder)" --report summary
+        env:
+          API_KEY_ALCHEMY: ${{ secrets.API_KEY_ALCHEMY }}
+        working-directory: ./contracts

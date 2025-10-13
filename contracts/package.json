@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "solhint": "^6.0.1"
+  }
+}

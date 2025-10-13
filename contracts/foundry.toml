@@ -1,0 +1,67 @@
+# Full reference https://github.com/foundry-rs/foundry/tree/master/crates/config
+[profile.default]
+fs_permissions = [
+    { access = "read", path = "./test/examples/transactions/mint.bin" },
+    { access = "read", path = "./test/examples/transactions/transfer.bin" },
+    { access = "read", path = "./test/examples/transactions/burn.bin" },
+]
+
+
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin-contracts/=lib/openzeppelin-contracts/contracts/",
+    "openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@anoma-evm-pa/=lib/evm-protocol-adapter/contracts/src/",
+    "@anoma-evm-pa-testing/=lib/evm-protocol-adapter/contracts/test/",
+    "@permit2/=lib/permit2/",
+    #
+    "@risc0-ethereum/=lib/evm-protocol-adapter/contracts/lib/risc0-ethereum/contracts/src/",
+    "@elliptic-curve-solidity/=lib/evm-protocol-adapter/contracts/lib/elliptic-curve-solidity/",
+    "@solady/=lib/evm-protocol-adapter/contracts/lib/solady/src",
+]
+
+
+# Deterministic deployment settings (https://book.getfoundry.sh/guides/deterministic-deployments-using-create2#configuring-your-foundrytoml)
+cbor_metadata = false
+bytecode_hash = "none"
+
+solc = "0.8.30"
+auto_detect_solc = false
+evm_version = "prague"
+gas_reports = [
+    "ERC20Forwarder",
+]
+optimizer = true
+via_ir = true
+optimizer_runs = 10_000
+
+src = "src"
+libs = ["lib"]
+out = "out"
+script = "script"
+test = "test"
+allow_internal_expect_revert = true
+
+[fuzz]
+runs = 1_000
+
+[profile.ci]
+fuzz = { runs = 1_000 }
+verbosity = 3
+
+[etherscan]
+mainnet = { key = "${API_KEY_ETHERSCAN}" }
+sepolia = { key = "${API_KEY_ETHERSCAN}" }
+arbitrum = { key = "${API_KEY_ETHERSCAN}" }
+arbitrum-sepolia = { key = "${API_KEY_ETHERSCAN}" }
+base = { key = "${API_KEY_ETHERSCAN}" }
+base-sepolia = { key = "${API_KEY_ETHERSCAN}" }
+
+[rpc_endpoints]
+mainnet = "https://eth-mainnet.g.alchemy.com/v2/${API_KEY_ALCHEMY}"
+sepolia = "https://eth-sepolia.g.alchemy.com/v2/${API_KEY_ALCHEMY}"
+arbitrum = "https://arb-mainnet.g.alchemy.com/v2/${API_KEY_ALCHEMY}"
+arbitrum-sepolia = "https://arb-sepolia.g.alchemy.com/v2/${API_KEY_ALCHEMY}"
+base = "https://base-mainnet.g.alchemy.com/v2/${API_KEY_ALCHEMY}"
+base-sepolia = "https://base-sepolia.g.alchemy.com/v2/${API_KEY_ALCHEMY}"
+localhost = "http://localhost:8545"
