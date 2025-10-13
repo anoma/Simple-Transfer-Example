@@ -1,3 +1,8 @@
+//! the transfer library contains the definition of the resource logics for the simple transfer
+//! application.
+//!
+//! Of particular interest are the TransferLogic struct, and the SimpleTransferWitness structs.
+
 use arm::{
     authorization::{AuthorizationSignature, AuthorizationVerifyingKey},
     encryption::AffinePoint,
@@ -16,13 +21,20 @@ use transfer_witness::{
     AuthorizationInfo, EncryptionInfo, ForwarderInfo, PermitInfo, SimpleTransferWitness,
 };
 
+/// The binary program that is executed in the zkvm to generate proofs.
+/// This program takes in a witness as argument and runs the constraint function on it.
 pub const SIMPLE_TRANSFER_ELF: &[u8] = include_bytes!("../elf/simple-transfer-guest.bin");
+
 lazy_static! {
+    /// The identity of the binary that executes the proofs in the zkvm.
     pub static ref SIMPLE_TRANSFER_ID: Digest =
         Digest::from_hex("81f8104fe367f5018a4bb0b259531be9ab35d3f1d51dea46c204bee154d5ee9e")
             .unwrap();
 }
 
+/// Holds the transfer resource logic.
+/// The witness is the input to create a proof. So a TransferLogic can be used to generate proof
+/// that the resource logics held within it are actually correct.
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct TransferLogic {
     witness: SimpleTransferWitness,
@@ -30,7 +42,7 @@ pub struct TransferLogic {
 
 impl TransferLogic {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    fn new(
         resource: Resource,
         is_consumed: bool,
         existence_path: MerklePath,
@@ -52,6 +64,7 @@ impl TransferLogic {
         }
     }
 
+    /// Creates resource logic for a created resource.
     pub fn consume_persistent_resource_logic(
         resource: Resource,
         existence_path: MerklePath,
@@ -70,7 +83,7 @@ impl TransferLogic {
             None,
         )
     }
-
+    /// Creates a resource logic for a resource that is created during minting, transfer, etc.
     pub fn create_persistent_resource_logic(
         resource: Resource,
         existence_path: MerklePath,
@@ -89,6 +102,7 @@ impl TransferLogic {
         )
     }
 
+    /// Creates a resource logic for an ephemeral resource created during minting.
     #[allow(clippy::too_many_arguments)]
     pub fn mint_resource_logic_with_permit(
         resource: Resource,
@@ -125,6 +139,7 @@ impl TransferLogic {
         )
     }
 
+    /// Creates a resource logic for a resource that is created when burning a resource.
     pub fn burn_resource_logic(
         resource: Resource,
         existence_path: MerklePath,

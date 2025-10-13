@@ -1,3 +1,6 @@
+//! The transfer witness library holds the struct to generate proofs over resource logics for
+//! simple transfer resources in the Anoma Pay application.
+//!
 pub use arm::resource_logic::LogicCircuit;
 use arm::{
     authorization::{AuthorizationSignature, AuthorizationVerifyingKey},
@@ -15,50 +18,74 @@ use arm::{
     Digest,
 };
 use serde::{Deserialize, Serialize};
+
+/// The SimpleTransferWitness holds all the information necessary to generate a proof of the
+/// resource logic of a given resource.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SimpleTransferWitness {
+    /// Resource this witness is about.
     pub resource: Resource,
+    /// Is this a consumed or created resource.
     pub is_consumed: bool,
+    /// Existence path in the action tree for the resource.
     pub existence_path: MerklePath,
+    /// Nullifier key for the resource.
     pub nf_key: Option<NullifierKey>,
+    /// See AuthorizationInfo struct.
     pub auth_info: Option<AuthorizationInfo>,
+    /// See EncryptionInfo struct.
     pub encryption_info: Option<EncryptionInfo>,
+    /// See ForwarderInfo struct.
     pub forwarder_info: Option<ForwarderInfo>,
 }
 
+/// The AuthorizationInfo holds information about the resource being consumed.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthorizationInfo {
-    // The authorization verifying key corresponds to the resource.value.owner
+    /// The authorization verifying key corresponds to the resource.value.owner
     pub auth_pk: AuthorizationVerifyingKey,
-    // A consumed persistent resource requires an authorization signature
+    /// A consumed persistent resource requires an authorization signature
     pub auth_sig: AuthorizationSignature,
 }
 
+/// The EncryptionInfo struct holds information about the encryption keys for the
+/// recipient/sender of a resource in a transaction.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EncryptionInfo {
-    // Obtain from the receiver for persistent resource_ciphertext
+    /// Public key. Obtain from the receiver for persistent resource_ciphertext
     pub encryption_pk: AffinePoint,
-    // randomly generated for persistent resource_ciphertext
+    /// Secret key. randomly generated for persistent resource_ciphertext
     pub sender_sk: SecretKey,
-    // randomly generated for persistent resource_ciphertext(12 bytes)
+    /// randomly generated for persistent resource_ciphertext(12 bytes)
     pub encryption_nonce: Vec<u8>,
-    // The discovery ciphertext for the resource
+    /// The discovery ciphertext for the resource
     pub discovery_cipher: Vec<u32>,
 }
 
+/// ForwarderInfo holds information about the forwarder contract being used by a transaction.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ForwarderInfo {
+    /// Wrapping/Unwrapping of a resource (i.e., mint/burn).
     pub call_type: CallType,
+    /// Address of the forwarder contract for this resource.
     pub forwarder_addr: Vec<u8>,
+    /// Address of the wrapped token within this resource (e.g., USDC).
     pub token_addr: Vec<u8>,
+    /// Address of the user
     pub user_addr: Vec<u8>,
+    /// PermitInfo (see struct)
     pub permit_info: Option<PermitInfo>,
 }
 
+/// The PermitInfo contains information about the permit2 signature that is used to generate
+/// logic proofs over resources.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PermitInfo {
+    /// Nonce of the permit2 signature.
     pub permit_nonce: Vec<u8>,
+    /// Deadline of the permit2 signature (i.e., when does it expire)
     pub permit_deadline: Vec<u8>,
+    /// Signature
     pub permit_sig: Vec<u8>,
 }
 
@@ -214,6 +241,7 @@ impl LogicCircuit for SimpleTransferWitness {
 }
 
 impl SimpleTransferWitness {
+    /// Create a new transfer witness.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         resource: Resource,
@@ -236,21 +264,25 @@ impl SimpleTransferWitness {
     }
 }
 
+/// Calculate the value ref based on an authorization key for a given user.
 pub fn calculate_value_ref_from_auth(auth_pk: &AuthorizationVerifyingKey) -> Digest {
     hash_bytes(&auth_pk.to_bytes())
 }
 
+/// Create the value_ref for a resource based on a calltype and the user address.
 pub fn calculate_value_ref_calltype_user(call_type: CallType, user_addr: &[u8]) -> Digest {
     let mut data = vec![call_type as u8];
     data.extend_from_slice(user_addr);
     hash_bytes(&data)
 }
 
+/// Calculate the label ref based on the forwarded and token address for resources.
 pub fn calculate_label_ref(forwarder_add: &[u8], erc20_add: &[u8]) -> Digest {
     hash_bytes(&[forwarder_add, erc20_add].concat())
 }
 
 impl EncryptionInfo {
+    /// Create new encryption info based on encryption and discovery public keys.
     pub fn new(encryption_pk: AffinePoint, discovery_pk: &AffinePoint) -> Self {
         let discovery_nonce: [u8; 12] = rand::random();
         let discovery_sk = SecretKey::random();

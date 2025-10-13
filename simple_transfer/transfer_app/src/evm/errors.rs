@@ -2,5 +2,5 @@
 #[derive(Debug, Clone)]
 pub enum EvmError {
     EvmSubmitError,
-    IndexerError
+    IndexerError,
 }
