@@ -8,4 +8,10 @@ pub enum TransactionError {
     MerkleProofError,
     InvalidAmount,
     EncodingError,
+    DecodingError,
+    ActionError,
+    ComplianceUnitCreateError,
+    LogicProofCreateError,
+    DeltaProofCreateError,
+    InvalidNullifierSizeError,
 }

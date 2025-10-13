@@ -1,6 +1,8 @@
 use crate::errors::TransactionError;
 use crate::errors::TransactionError::{
-    ActionTreeError, EncodingError, InvalidKeyChain, MerklePathError,
+    ActionError, ActionTreeError, ComplianceUnitCreateError, DecodingError, DeltaProofCreateError,
+    EncodingError, InvalidKeyChain, InvalidNullifierSizeError, LogicProofCreateError,
+    MerklePathError,
 };
 use crate::examples::mint::value_ref_ephemeral_mint;
 use crate::examples::shared::{
@@ -22,8 +24,8 @@ use arm::nullifier_key::NullifierKey;
 use arm::resource::Resource;
 use arm::transaction::{Delta, Transaction};
 use arm::utils::{bytes_to_words, words_to_bytes};
+use arm::Digest;
 use k256::AffinePoint;
-use risc0_zkvm::Digest;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string_pretty;
 use serde_with::base64::Base64;
@@ -85,14 +87,14 @@ pub async fn mint_request_example(
 
     let nonce = random_nonce();
     let consumed_resource = Resource {
-        logic_ref: TransferLogic::verifying_key_as_bytes(),
+        logic_ref: TransferLogic::verifying_key(),
         label_ref: label_ref(config),
         quantity: amount,
         value_ref: value_ref_ephemeral_mint(&minter),
         is_ephemeral: true,
-        nonce: nonce.to_vec(),
+        nonce,
         nk_commitment: minter.nf_key.commit(),
-        rand_seed: random_nonce().to_vec(),
+        rand_seed: random_nonce(),
     };
 
     // create the nullifier for the created resource.
@@ -101,24 +103,27 @@ pub async fn mint_request_example(
     // therefore the nullifier for the ephemeral resource is also derived from the nullifier key?
     let consumed_resource_nullifier = consumed_resource
         .nullifier(&minter.nf_key)
-        .ok_or(InvalidKeyChain)?;
+        .map_err(|_| InvalidKeyChain)?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Construct the created resource
 
     // The nonce for the created resource must be the consumed resource's nullifier. The consumed
     // resource is the ephemeral resource that was created above.
-    let nonce = consumed_resource_nullifier.as_bytes().to_vec();
+    let nonce = consumed_resource_nullifier
+        .as_bytes()
+        .try_into()
+        .map_err(|_| InvalidNullifierSizeError)?;
 
     let created_resource = Resource {
-        logic_ref: TransferLogic::verifying_key_as_bytes(),
+        logic_ref: TransferLogic::verifying_key(),
         label_ref: label_ref(config),
         quantity: amount,
         value_ref: value_ref_created(&minter),
         is_ephemeral: false,
-        nonce: nonce.clone(),
+        nonce,
         nk_commitment: minter.nf_key.commit(),
-        rand_seed: vec![6u8; 32],
+        rand_seed: [6u8; 32],
     };
 
     let created_resource_commitment: Digest = created_resource.commitment();
@@ -168,17 +173,22 @@ pub fn mint_from_request(
     request: CreateRequest,
     config: &AnomaPayConfig,
 ) -> Result<(Resource, Transaction), TransactionError> {
-    let created_resource: Resource = Expand::expand(request.created_resource);
-    let consumed_resource: Resource = Expand::expand(request.consumed_resource);
+    let created_resource: Resource =
+        Expand::expand(request.created_resource).map_err(|_| DecodingError)?;
+    let consumed_resource: Resource =
+        Expand::expand(request.consumed_resource).map_err(|_| DecodingError)?;
     let consumed_nf_key: NullifierKey =
         NullifierKey::from_bytes(request.consumed_nf_key.as_slice());
 
     let created_resource_commitment = created_resource.commitment();
     let consumed_resource_nullifier: Digest = consumed_resource
         .nullifier(&consumed_nf_key)
-        .ok_or(InvalidKeyChain)?;
+        .map_err(|_| InvalidKeyChain)?;
 
-    let latest_commitment_tree_root = bytes_to_words(request.latest_cm_tree_root.as_slice());
+    let latest_commitment_tree_root: Digest =
+        bytes_to_words(request.latest_cm_tree_root.as_slice())
+            .try_into()
+            .map_err(|_| DecodingError)?;
 
     let user_address = request.user_addr;
     let nonce = request.permit_nonce;
@@ -199,10 +209,10 @@ pub fn mint_from_request(
     // Create compliance proof
 
     let compliance_witness = ComplianceWitness::from_resources(
-        consumed_resource.clone(),
+        consumed_resource,
         latest_commitment_tree_root,
         consumed_nf_key.clone(),
-        created_resource.clone(),
+        created_resource,
     );
 
     // generate the proof in a separate thread
@@ -210,17 +220,24 @@ pub fn mint_from_request(
     let compliance_unit =
         thread::spawn(move || ComplianceUnit::create(&compliance_witness_clone.clone()))
             .join()
-            .unwrap();
+            .map_err(|e| {
+                println!("prove thread panic: {:?}", e);
+                ComplianceUnitCreateError
+            })?
+            .map_err(|e| {
+                println!("proving error: {:?}", e);
+                ComplianceUnitCreateError
+            })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create logic proof
 
     let consumed_resource_path = action_tree
         .generate_path(&consumed_resource_nullifier)
-        .ok_or(MerklePathError)?;
+        .map_err(|_| MerklePathError)?;
 
     let consumed_logic_witness: TransferLogic = TransferLogic::mint_resource_logic_with_permit(
-        consumed_resource.clone(),
+        consumed_resource,
         consumed_resource_path,
         consumed_nf_key,
         config.forwarder_address.to_vec(),
@@ -235,14 +252,21 @@ pub fn mint_from_request(
     let consumed_logic_witness_clone = consumed_logic_witness.clone();
     let consumed_logic_proof = thread::spawn(move || consumed_logic_witness_clone.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     let created_resource_path = action_tree
         .generate_path(&created_resource_commitment)
-        .ok_or(ActionTreeError)?;
+        .map_err(|_| ActionTreeError)?;
 
     let created_logic_witness = TransferLogic::create_persistent_resource_logic(
-        created_resource.clone(),
+        created_resource,
         created_resource_path,
         &discovery_pk,
         encryption_pk,
@@ -254,7 +278,14 @@ pub fn mint_from_request(
     let created_logic_witness_clone = created_logic_witness.clone();
     let created_logic_proof = thread::spawn(move || created_logic_witness_clone.prove())
         .join()
-        .unwrap();
+        .map_err(|e| {
+            println!("prove thread panic: {:?}", e);
+            LogicProofCreateError
+        })?
+        .map_err(|e| {
+            println!("proving error: {:?}", e);
+            LogicProofCreateError
+        })?;
 
     ////////////////////////////////////////////////////////////////////////////
     // Create actions for transaction
@@ -262,11 +293,16 @@ pub fn mint_from_request(
     let action: Action = Action::new(
         vec![compliance_unit],
         vec![consumed_logic_proof, created_logic_proof],
-    );
+    )
+    .map_err(|_| ActionError)?;
 
-    let delta_witness = DeltaWitness::from_bytes(&compliance_witness.rcv);
-    let mut transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
-    transaction.generate_delta_proof();
+    let delta_witness =
+        DeltaWitness::from_bytes(&compliance_witness.rcv).map_err(|_| LogicProofCreateError)?;
+    let transaction = Transaction::create(vec![action], Delta::Witness(delta_witness));
+
+    let transaction = transaction
+        .generate_delta_proof()
+        .map_err(|_| DeltaProofCreateError)?;
 
     verify_transaction(transaction.clone())?;
     Ok((created_resource, transaction))

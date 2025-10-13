@@ -1,10 +1,22 @@
+//! Backend application for the Anomapay application.
+//!
+//! The backend serves a JSON api to handle requests.
+//! The following api's are available:
+//!  - minting
+//!  - transferring
+//!  - splitting
+//!  - burning
+
 mod errors;
+
 mod evm;
 mod examples;
+mod permit2;
 mod requests;
 mod tests;
 mod user;
 mod webserver;
+
 use crate::requests::mint::json_example_mint_request;
 use crate::webserver::{
     all_options, burn, default_error, health, is_approved, mint, split, transfer, unprocessable,
@@ -16,7 +28,6 @@ use rocket::{catchers, launch, routes};
 use std::env;
 use std::error::Error;
 
-/// Configuration parameters for the Anomapay backend.
 #[derive(Debug, Deserialize, Serialize)]
 struct AnomaPayConfig {
     // Address of the tokens that are being wrapped (e.g., USDC)
@@ -34,6 +45,7 @@ struct AnomaPayConfig {
     // api key for the ethereum rpc
     #[serde(skip_serializing)]
     ethereum_rpc_api_key: String,
+    indexer_address: String,
 }
 
 /// Reads the environment for required values and sets them into the config.
@@ -59,6 +71,7 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
         .map_err(|_| "FORWARDER_ADDRESS invalid")?;
 
     let ethereum_rpc = env::var("RPC_URL").map_err(|_| "RPC_URL not set")?;
+    let indexer_address = env::var("INDEXER_ADDRESS").map_err(|_| "INDEXER_ADDRESS not set")?;
     let ethereum_rpc_api_key = env::var("API_KEY").map_err(|_| "API_KEY not set")?;
 
     Ok(AnomaPayConfig {
@@ -69,6 +82,7 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
         forwarder_address,
         ethereum_rpc,
         ethereum_rpc_api_key,
+        indexer_address,
     })
 }
 #[launch]
@@ -108,72 +122,4 @@ async fn rocket() -> _ {
             ],
         )
         .register("/", catchers![default_error, unprocessable])
-    //
-    // // create keychains for all users
-    // let private_key = read_private_key();
-    // let address = read_address();
-    // let alice = Keychain::alice(address, Some(private_key));
-    //
-    // let _bob = Keychain::bob(None);
-    //
-    // ////////////////////////////////////////////////////////////////////////////
-    // // Mint
-    // let (resource, transaction) = create_mint_transaction(alice.clone(), 2, &config)
-    //     .await
-    //     .unwrap_or_else(|e| {
-    //         println!("Error creating mint transaction: {:?}", e);
-    //         std::process::exit(1);
-    //     });
-    // println!("created mint transaction");
-    // pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
-    //     println!("failed to submit the mint transaction");
-    //     std::process::exit(1);
-    // });
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Transfer
-
-    // let (_resource, transaction) = create_transfer_transaction(alice.clone(), bob.clone(), resource.clone())
-    //     .await
-    //     .unwrap_or_else(|e| {
-    //         println!("Error creating transfer transaction: {:?}", e);
-    //         std::process::exit(1);
-    //     });
-    //
-    // pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
-    //     println!("failed to submit the transfer transaction");
-    //     std::process::exit(1);
-    // });
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Split
-
-    // let (_resource, _remainder, transaction) =
-    //     create_split_transaction(alice.clone(), bob.clone(), resource.clone(), 1, &config)
-    //         .await
-    //         .unwrap_or_else(|e| {
-    //             println!("Error creating split transaction: {:?}", e);
-    //             std::process::exit(1);
-    //         });
-    //
-    // pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
-    //     println!("failed to submit the split transaction");
-    //     std::process::exit(1);
-    // });
-
-    ////////////////////////////////////////////////////////////////////////////
-    // Burn
-
-    // let (_resource, transaction) =
-    //     create_burn_transaction(alice.clone(), resource.clone(), &config)
-    //         .await
-    //         .unwrap_or_else(|e| {
-    //             println!("Error creating burn transaction: {:?}", e);
-    //             std::process::exit(1);
-    //         });
-    //
-    // pa_submit_and_await(transaction).await.unwrap_or_else(|_| {
-    //     println!("failed to submit the burn transaction");
-    //     std::process::exit(1);
-    // });
 }

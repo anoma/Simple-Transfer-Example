@@ -20,6 +20,12 @@ RUN curl -L https://foundry.paradigm.xyz | bash
 ENV PATH="/root/.foundry/bin:${PATH}"
 RUN foundryup
 
+# install risc0
+RUN curl -L https://risczero.com/install | bash
+ENV PATH="/root/.risc0/bin:${PATH}"
+RUN rzup install
+RUN rzup install risc0-groth16
+
 # set working directory
 WORKDIR /app
 
@@ -28,15 +34,9 @@ COPY . .
 
 # build the rust projects
 RUN cargo fetch
-RUN cargo build --release --features gpu
+RUN cargo build --release ${RUST_FEATURES}
 RUN cp /app/target/release/transfer_app /app/
 RUN rm -rf target
-
-# install risc0
-RUN curl -L https://risczero.com/install | bash
-ENV PATH="/root/.risc0/bin:${PATH}"
-RUN rzup install
-RUN rzup install risc0-groth16
 
 # entrypoint of the image
 CMD ["/app/transfer_app"]

@@ -1,7 +1,11 @@
+//! The transfer witness library holds the struct to generate proofs over resource logics for
+//! simple transfer resources in the Anoma Pay application.
+//!
 pub use arm::resource_logic::LogicCircuit;
 use arm::{
     authorization::{AuthorizationSignature, AuthorizationVerifyingKey},
     encryption::{AffinePoint, Ciphertext, SecretKey},
+    error::ArmError,
     evm::{
         encode_permit_witness_transfer_from, encode_transfer, CallType, ForwarderCalldata,
         PermitTransferFrom,
@@ -10,90 +14,115 @@ use arm::{
     merkle_path::MerklePath,
     nullifier_key::NullifierKey,
     resource::Resource,
-    utils::{bytes_to_words, hash_bytes, words_to_bytes},
+    utils::{bytes_to_words, hash_bytes},
+    Digest,
 };
 use serde::{Deserialize, Serialize};
 
+/// The SimpleTransferWitness holds all the information necessary to generate a proof of the
+/// resource logic of a given resource.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SimpleTransferWitness {
+    /// Resource this witness is about.
     pub resource: Resource,
+    /// Is this a consumed or created resource.
     pub is_consumed: bool,
+    /// Existence path in the action tree for the resource.
     pub existence_path: MerklePath,
+    /// Nullifier key for the resource.
     pub nf_key: Option<NullifierKey>,
+    /// See AuthorizationInfo struct.
     pub auth_info: Option<AuthorizationInfo>,
+    /// See EncryptionInfo struct.
     pub encryption_info: Option<EncryptionInfo>,
+    /// See ForwarderInfo struct.
     pub forwarder_info: Option<ForwarderInfo>,
 }
 
+/// The AuthorizationInfo holds information about the resource being consumed.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthorizationInfo {
-    // The authorization verifying key corresponds to the resource.value.owner
+    /// The authorization verifying key corresponds to the resource.value.owner
     pub auth_pk: AuthorizationVerifyingKey,
-    // A consumed persistent resource requires an authorization signature
+    /// A consumed persistent resource requires an authorization signature
     pub auth_sig: AuthorizationSignature,
 }
 
+/// The EncryptionInfo struct holds information about the encryption keys for the
+/// recipient/sender of a resource in a transaction.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EncryptionInfo {
-    // Obtain from the receiver for persistent resource_ciphertext
+    /// Public key. Obtain from the receiver for persistent resource_ciphertext
     pub encryption_pk: AffinePoint,
-    // randomly generated for persistent resource_ciphertext
+    /// Secret key. randomly generated for persistent resource_ciphertext
     pub sender_sk: SecretKey,
-    // randomly generated for persistent resource_ciphertext(12 bytes)
+    /// randomly generated for persistent resource_ciphertext(12 bytes)
     pub encryption_nonce: Vec<u8>,
-    // The discovery ciphertext for the resource
+    /// The discovery ciphertext for the resource
     pub discovery_cipher: Vec<u32>,
 }
 
+/// ForwarderInfo holds information about the forwarder contract being used by a transaction.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ForwarderInfo {
+    /// Wrapping/Unwrapping of a resource (i.e., mint/burn).
     pub call_type: CallType,
+    /// Address of the forwarder contract for this resource.
     pub forwarder_addr: Vec<u8>,
+    /// Address of the wrapped token within this resource (e.g., USDC).
     pub token_addr: Vec<u8>,
+    /// Address of the user
     pub user_addr: Vec<u8>,
+    /// PermitInfo (see struct)
     pub permit_info: Option<PermitInfo>,
 }
 
+/// The PermitInfo contains information about the permit2 signature that is used to generate
+/// logic proofs over resources.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PermitInfo {
+    /// Nonce of the permit2 signature.
     pub permit_nonce: Vec<u8>,
+    /// Deadline of the permit2 signature (i.e., when does it expire)
     pub permit_deadline: Vec<u8>,
+    /// Signature
     pub permit_sig: Vec<u8>,
 }
 
 impl LogicCircuit for SimpleTransferWitness {
-    fn constrain(&self) -> LogicInstance {
+    fn constrain(&self) -> Result<LogicInstance, ArmError> {
         // Load resources
         let cm = self.resource.commitment();
         let tag = if self.is_consumed {
-            self.resource
-                .nullifier_from_commitment(self.nf_key.as_ref().unwrap(), &cm)
-                .unwrap()
+            let nf_key = self
+                .nf_key
+                .as_ref()
+                .ok_or(ArmError::MissingField("Nullifier key"))?;
+            self.resource.nullifier_from_commitment(nf_key, &cm)?
         } else {
             cm
         };
 
         // Check the existence path
         let root = self.existence_path.root(&tag);
-        let root_bytes = words_to_bytes(&root);
+        let root_bytes = root.as_bytes();
 
         // Generate resource_payload and external_payload
         let (discovery_payload, resource_payload, external_payload) = if self.resource.is_ephemeral
         {
-            // Check resource label: label = sha2(forwarder_addr, erc20_addr)
-            let forwarder_addr = self
+            let forwarder_info = self
                 .forwarder_info
                 .as_ref()
-                .unwrap()
-                .forwarder_addr
-                .as_ref();
-            let erc20_addr = self.forwarder_info.as_ref().unwrap().token_addr.as_ref();
-            let user_addr = self.forwarder_info.as_ref().unwrap().user_addr.as_ref();
+                .ok_or(ArmError::MissingField("Forwarder info"))?;
+            // Check resource label: label = sha2(forwarder_addr, erc20_addr)
+            let forwarder_addr = forwarder_info.forwarder_addr.as_ref();
+            let erc20_addr = forwarder_info.token_addr.as_ref();
+            let user_addr = forwarder_info.user_addr.as_ref();
             let label_ref = calculate_label_ref(forwarder_addr, erc20_addr);
             assert_eq!(self.resource.label_ref, label_ref);
 
             // Check resource value_ref: value_ref = sha2(call_type, user_addr)
-            let call_type = self.forwarder_info.as_ref().unwrap().call_type;
+            let call_type = forwarder_info.call_type;
             let value_ref = calculate_value_ref_calltype_user(call_type, user_addr);
             assert_eq!(self.resource.value_ref, value_ref);
 
@@ -108,38 +137,21 @@ impl LogicCircuit for SimpleTransferWitness {
             let input = match call_type {
                 CallType::Unwrap => encode_transfer(erc20_addr, user_addr, self.resource.quantity),
                 CallType::Wrap => {
+                    let permit_info = forwarder_info
+                        .permit_info
+                        .as_ref()
+                        .ok_or(ArmError::MissingField("Permit info"))?;
                     let permit = PermitTransferFrom::from_bytes(
                         erc20_addr,
                         self.resource.quantity,
-                        self.forwarder_info
-                            .as_ref()
-                            .unwrap()
-                            .permit_info
-                            .as_ref()
-                            .unwrap()
-                            .permit_nonce
-                            .as_ref(),
-                        self.forwarder_info
-                            .as_ref()
-                            .unwrap()
-                            .permit_info
-                            .as_ref()
-                            .unwrap()
-                            .permit_deadline
-                            .as_ref(),
+                        permit_info.permit_nonce.as_ref(),
+                        permit_info.permit_deadline.as_ref(),
                     );
                     encode_permit_witness_transfer_from(
                         user_addr,
                         permit,
                         root_bytes,
-                        self.forwarder_info
-                            .as_ref()
-                            .unwrap()
-                            .permit_info
-                            .as_ref()
-                            .unwrap()
-                            .permit_sig
-                            .as_ref(),
+                        permit_info.permit_sig.as_ref(),
                     )
                 }
                 _ => {
@@ -161,33 +173,37 @@ impl LogicCircuit for SimpleTransferWitness {
         } else {
             // Consume a persistent resource
             if self.is_consumed {
-                let auth_pk = self.auth_info.as_ref().unwrap().auth_pk;
+                let auth_info = self
+                    .auth_info
+                    .as_ref()
+                    .ok_or(ArmError::MissingField("Auth info"))?;
+                let auth_pk = auth_info.auth_pk;
                 // check value_ref
                 assert_eq!(
                     self.resource.value_ref,
                     calculate_value_ref_from_auth(&auth_pk)
                 );
                 // Verify the authorization signature
-                assert!(auth_pk
-                    .verify(root_bytes, &self.auth_info.as_ref().unwrap().auth_sig)
-                    .is_ok());
+                assert!(auth_pk.verify(root_bytes, &auth_info.auth_sig).is_ok());
 
                 // empty payloads for consumed persistent resource
                 (vec![], vec![], vec![])
             } else {
                 // Generate resource ciphertext
+                let encryption_info = self
+                    .encryption_info
+                    .as_ref()
+                    .ok_or(ArmError::MissingField("Encryption info"))?;
                 let cipher = Ciphertext::encrypt(
-                    &self.resource.to_bytes(),
-                    &self.encryption_info.as_ref().unwrap().encryption_pk,
-                    &self.encryption_info.as_ref().unwrap().sender_sk,
-                    self.encryption_info
-                        .as_ref()
-                        .unwrap()
+                    &self.resource.to_bytes()?,
+                    &encryption_info.encryption_pk,
+                    &encryption_info.sender_sk,
+                    encryption_info
                         .encryption_nonce
                         .clone()
                         .try_into()
-                        .expect("Failed to convert encryption_nonce"),
-                );
+                        .map_err(|_| ArmError::InvalidEncryptionNonce)?,
+                )?;
                 let cipher_expirable_blob = ExpirableBlob {
                     blob: cipher.as_words(),
                     deletion_criterion: 1,
@@ -195,12 +211,7 @@ impl LogicCircuit for SimpleTransferWitness {
 
                 // Generate discovery_payload
                 let cipher_discovery_blob = ExpirableBlob {
-                    blob: self
-                        .encryption_info
-                        .as_ref()
-                        .unwrap()
-                        .discovery_cipher
-                        .clone(),
+                    blob: encryption_info.discovery_cipher.clone(),
                     deletion_criterion: 1,
                 };
 
@@ -220,16 +231,17 @@ impl LogicCircuit for SimpleTransferWitness {
             application_payload: vec![], // Empty application payload
         };
 
-        LogicInstance {
-            tag: tag.as_words().to_vec(),
+        Ok(LogicInstance {
+            tag,
             is_consumed: self.is_consumed,
             root,
             app_data,
-        }
+        })
     }
 }
 
 impl SimpleTransferWitness {
+    /// Create a new transfer witness.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         resource: Resource,
@@ -252,21 +264,25 @@ impl SimpleTransferWitness {
     }
 }
 
-pub fn calculate_value_ref_from_auth(auth_pk: &AuthorizationVerifyingKey) -> Vec<u8> {
+/// Calculate the value ref based on an authorization key for a given user.
+pub fn calculate_value_ref_from_auth(auth_pk: &AuthorizationVerifyingKey) -> Digest {
     hash_bytes(&auth_pk.to_bytes())
 }
 
-pub fn calculate_value_ref_calltype_user(call_type: CallType, user_addr: &[u8]) -> Vec<u8> {
+/// Create the value_ref for a resource based on a calltype and the user address.
+pub fn calculate_value_ref_calltype_user(call_type: CallType, user_addr: &[u8]) -> Digest {
     let mut data = vec![call_type as u8];
     data.extend_from_slice(user_addr);
     hash_bytes(&data)
 }
 
-pub fn calculate_label_ref(forwarder_add: &[u8], erc20_add: &[u8]) -> Vec<u8> {
+/// Calculate the label ref based on the forwarded and token address for resources.
+pub fn calculate_label_ref(forwarder_add: &[u8], erc20_add: &[u8]) -> Digest {
     hash_bytes(&[forwarder_add, erc20_add].concat())
 }
 
 impl EncryptionInfo {
+    /// Create new encryption info based on encryption and discovery public keys.
     pub fn new(encryption_pk: AffinePoint, discovery_pk: &AffinePoint) -> Self {
         let discovery_nonce: [u8; 12] = rand::random();
         let discovery_sk = SecretKey::random();
@@ -277,8 +293,9 @@ impl EncryptionInfo {
             discovery_nonce
                 .as_slice()
                 .try_into()
-                .expect("Failed to convert discovery_nonce"),
+                .expect("Failed to convert discovery nonce, it cannot fail"),
         )
+        .unwrap()
         .as_words();
         let sender_sk = SecretKey::random();
         let encryption_nonce: [u8; 12] = rand::random();
