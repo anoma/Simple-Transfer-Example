@@ -1,0 +1,285 @@
+# name: Rustler CI
+
+# on:
+#   push:
+#     # branches: ["main"]
+#   pull_request:
+#     # branches: ["main"]
+
+# permissions:
+#   contents: write
+#   pull-requests: write
+
+# jobs:
+#   precompile:
+#     name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }} (${{ matrix.job.os }})
+#     runs-on: ${{ matrix.job.os }}
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         nif: ["2.15"]
+#         job:
+#           # - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04, use-cross: true }
+#           # - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04, use-cross: true }
+#           # - { target: arm-unknown-linux-gnueabihf, os: ubuntu-22.04, use-cross: true }
+#           # - { target: riscv64gc-unknown-linux-gnu, os: ubuntu-22.04, use-cross: true }
+#           # - { target: x86_64-pc-windows-msvc, os: windows-2022 }
+#           # - { target: x86_64-pc-windows-gnu, os: windows-2022 }
+#           # - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, use-cross: true }
+#           - { target: aarch64-apple-darwin, os: macos-13 }
+#           - { target: x86_64-apple-darwin, os: macos-13 }
+#           - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+#     steps:
+#       - name: Checkout source code
+#         uses: actions/checkout@v3
+
+#       - name: restore dependencies cache
+#         uses: actions/cache@v3
+#         with:
+#           path: |
+#             target
+#             _build
+#           key: rustler-${{ matrix.job.target }}-${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('**/Cargo.lock') }}
+#           restore-keys: rustler-${{ matrix.job.target }}-
+
+#       - name: Extract package version number
+#         shell: bash
+#         run: |
+#           # Get the project version from mix.exs
+#           echo "PROJECT_VERSION=$(sed -n 's/^  @version "\(.*\)"/\1/p' mix.exs | head -n1)" >> $GITHUB_ENV
+
+#       - name: Sleep for arbitrary amount of seconds to avoid rate limiting the rust installer
+#         shell: bash
+#         run: |
+#           sleep $((RANDOM % 11))
+
+#       - name: Install Rust toolchain
+#         uses: dtolnay/rust-toolchain@stable
+#         with:
+#           target: ${{ matrix.job.target }}
+
+#       - name: Install Foundry
+#         uses: foundry-rs/foundry-toolchain@v1
+#         with:
+#           version: stable
+
+#       #-------------------------------------------------------------------------
+#       # Build the arm_bindings crate
+
+#       - name: Build `arm_bindings` repo
+#         id: build-arm-bindings
+#         uses: philss/rustler-precompiled-action@v1.1.4
+#         with:
+#           nif-version: ${{ matrix.nif }}
+#           project-dir: "."
+#           project-name: arm_bindings
+#           project-version: ${{ env.PROJECT_VERSION }}
+#           target: ${{ matrix.job.target }}
+#           use-cross: ${{ matrix.job.use-cross }}
+
+#       - name: Artifact upload `arm_bindings`
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: ${{ steps.build-arm-bindings.outputs.file-name }}
+#           path: ${{ steps.build-arm-bindings.outputs.file-path }}
+#           overwrite: true
+
+#       - name: Publish archives and packages `arm_bindings`
+#         uses: softprops/action-gh-release@v1
+#         with:
+#           files: |
+#             ${{ steps.build-arm-bindings.outputs.file-path }}
+#         if: startsWith(github.ref, 'refs/tags/')
+
+#       #-------------------------------------------------------------------------
+#       # Build the arm_bindings_test crate
+
+#       - name: Build `arm_bindings_test` repo
+#         id: build-arm-bindings-test
+#         uses: philss/rustler-precompiled-action@v1.1.4
+#         with:
+#           nif-version: ${{ matrix.nif }}
+#           project-dir: "."
+#           project-name: arm_bindings_test
+#           project-version: ${{ env.PROJECT_VERSION }}
+#           target: ${{ matrix.job.target }}
+#           use-cross: ${{ matrix.job.use-cross }}
+
+#       - name: Artifact upload `arm_bindings_test`
+#         uses: actions/upload-artifact@v4
+
+#         with:
+#           name: ${{ steps.build-arm-bindings-test.outputs.file-name }}
+#           path: ${{ steps.build-arm-bindings-test.outputs.file-path }}
+#           overwrite: true
+
+#       - name: Publish archives and packages `arm_bindings_test`
+#         uses: softprops/action-gh-release@v1
+#         with:
+#           files: |
+#             ${{ steps.build-arm-bindings-test.outputs.file-path }}
+#         if: startsWith(github.ref, 'refs/tags/')
+
+#   #-----------------------------------------------------------------------------
+#   # Lint Elixir Code
+
+#   elixir_lint:
+#     needs: precompile
+#     name: build and test
+#     runs-on: ubuntu-latest
+#     env:
+#       RISC0_DEV_MODE: true # use risc0 debug proving
+#       BUILD_NATIVE: true # compile the sdk, do not use precompiled
+
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           submodules: "true"
+#       - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+#       - name: Install Foundry
+#         uses: foundry-rs/foundry-toolchain@v1
+#         with:
+#           version: stable
+
+#       - name: set up Elixir
+#         uses: erlef/setup-beam@v1
+#         with:
+#           version-type: "strict"
+#           version-file: ".tool-versions"
+
+#       #----------------------------------------------------------------------------
+#       # Restore the cache.
+
+#       - name: restore dependencies cache
+#         uses: actions/cache@v3
+#         with:
+#           path: |
+#             _build
+#             target
+#           key: elixir-${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('**/Cargo.lock') }}
+#           restore-keys: elixir-
+
+#       #----------------------------------------------------------------------------
+#       # Fetch and compile dependencies
+
+#       - name: install dependencies
+#         run: |
+#           mix deps.get
+
+#       - name: compile deps
+#         run: mix deps.compile
+
+#       #----------------------------------------------------------------------------
+#       # Lint
+
+#       - name: compile sdk
+#         run: mix compile --warnings-as-errors
+
+#       - name: check formatting
+#         run: mix format --check-formatted
+
+#       - name: check dialyzer
+#         run: mix dialyzer
+
+#       - name: check dependencies
+#         run: mix deps.unlock --check-unused
+
+#       - name: credo
+#         run: mix credo --strict
+
+#       #-------------------------------------------------------------------------
+#       # Run the tests
+
+#       - name: run tests
+#         run: mix test
+
+#   #-----------------------------------------------------------------------------
+#   # Generate checksum file for precompiled binaries
+
+#   checksums:
+#     needs: elixir_lint
+#     name: generate checksums
+#     runs-on: ubuntu-latest
+#     if: startsWith(github.ref, 'refs/tags/')
+#     env:
+#       RISC0_DEV_MODE: true # use risc0 debug proving
+#       BUILD_NATIVE: true # compile the sdk, do not use precompiled
+
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           submodules: "true"
+#       - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+#       - name: Install Foundry
+#         uses: foundry-rs/foundry-toolchain@v1
+#         with:
+#           version: stable
+
+#       - name: set up Elixir
+#         uses: erlef/setup-beam@v1
+#         with:
+#           version-type: "strict"
+#           version-file: ".tool-versions"
+
+#       #----------------------------------------------------------------------------
+#       # Restore the cache.
+
+#       - name: restore dependencies cache
+#         uses: actions/cache@v3
+#         with:
+#           path: |
+#             _build
+#             target
+#           key: elixir-${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('**/Cargo.lock') }}
+#           restore-keys: elixir-
+
+#       #----------------------------------------------------------------------------
+#       # Fetch and compile dependencies
+
+#       - name: install dependencies
+#         run: |
+#           mix deps.get
+
+#       - name: compile deps
+#         run: mix deps.compile
+
+#       #----------------------------------------------------------------------------
+#       # Generate checksums
+#       - name: Extract package version number
+#         shell: bash
+#         run: |
+#           # Get the project version from mix.exs
+#           echo "PROJECT_VERSION=$(sed -n 's/^  @version "\(.*\)"/\1/p' mix.exs | head -n1)" >> $GITHUB_ENV
+
+#       - name: generate checksums
+#         run: |
+#           rm -f checksum-Elixir.AnomaSDK.Arm.Test.exs
+#           rm -f checksum-Elixir.AnomaSDK.Arm.exs
+#           mix rustler_precompiled.download AnomaSDK.Arm.Test --ignore-unavailable --all
+#           mix rustler_precompiled.download AnomaSDK.Arm --ignore-unavailable --all
+
+#       - name: configure git
+#         run: |
+#           git config --global user.name "github-actions[bot]"
+#           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+
+#       - name: commit checksums
+#         run: |
+#           git checkout -b checksums/${{ env.PROJECT_VERSION }}
+#           git add checksum-Elixir.AnomaSDK.Arm.Test.exs
+#           git add checksum-Elixir.AnomaSDK.Arm.exs
+#           git commit -m "Generate checksum files for v${{ env.PROJECT_VERSION }}"
+#           git push origin checksums/${{ env.PROJECT_VERSION }}
+
+#       - name: Create Pull Request
+#         env:
+#           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         run: |
+#           gh pr create \
+#             --title "Checksums v${{ env.PROJECT_VERSION }}" \
+#             --body "Checksum files for v${{ env.PROJECT_VERSION }}" \
+#             --base main \
+#             --head checksums/${{ env.PROJECT_VERSION }}
