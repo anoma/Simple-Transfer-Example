@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler \
     libclang-dev \
     tree \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # install the rust toolchain
