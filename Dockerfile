@@ -24,10 +24,10 @@ RUN foundryup
 # install risc0
 RUN curl -L https://risczero.com/install | bash
 ENV PATH="/root/.risc0/bin:${PATH}"
-RUN rzup install
+RUN rzup install --verbose
 RUN tree ~/.risc0/extensions
 RUN rzup show
-RUN rzup install risc0-groth16
+RUN rzup install --verbose risc0-groth16
 
 # set working directory
 WORKDIR /app
