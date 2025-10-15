@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     git \
     protobuf-compiler \
     libclang-dev \
+    tree \
     && rm -rf /var/lib/apt/lists/*
 
 # install the rust toolchain
@@ -24,6 +25,7 @@ RUN foundryup
 RUN curl -L https://risczero.com/install | bash
 ENV PATH="/root/.risc0/bin:${PATH}"
 RUN rzup install
+RUN tree ~/.risc0/extensions
 RUN rzup show
 RUN rzup install risc0-groth16
 
