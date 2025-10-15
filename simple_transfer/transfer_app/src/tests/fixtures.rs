@@ -8,6 +8,7 @@ use crate::user::Keychain;
 /// The address and private key for alice are read from the environment to test actual submission
 /// to sepolia.
 pub fn alice_keychain() -> Keychain {
+    // TODO! Pass the key in as an argument/use a random key.
     let private_key = read_private_key();
     let address = read_address();
     let keychain = Keychain::alice(address, Some(private_key));

@@ -5,61 +5,107 @@ mod tests {
     use crate::examples::end_to_end::mint::create_mint_transaction;
     use crate::examples::end_to_end::split::create_split_transaction;
     use crate::examples::end_to_end::transfer::create_transfer_transaction;
-    use crate::tests::fixtures::{alice_keychain, bob_keychain};
+    use crate::tests::fixtures::alice_keychain;
+    use crate::tests::forwarder::ERC20Forwarder;
     use crate::user::Keychain;
     use crate::{load_config, AnomaPayConfig};
+    use evm_protocol_adapter_bindings::conversion::ProtocolAdapter;
+
+    use alloy::network::EthereumWallet;
+    use alloy::node_bindings::Anvil;
+    use alloy::primitives::{address, B256};
+    use alloy::providers::{Provider, ProviderBuilder};
+    use alloy::signers::local::PrivateKeySigner;
     use arm::resource::Resource;
     use arm::transaction::Transaction;
+    use reqwest::Url;
+    use transfer_library::SIMPLE_TRANSFER_ID;
 
     // time to wait for a transaction to be confirmed
-    pub const WAIT_TIME: u64 = 80;
 
     /// Run all the scenarios in sequence.
     /// Rust tests run in parallel by default and this gums up the works.
     /// This functions forces the tests to run in sequence.
     #[tokio::test]
     async fn run_scenarios() {
-        // test a simple mint transfer
-        test_mint().await;
+        let config = load_config().expect("failed to load config in test");
 
+        let fork_url: Url = (config.ethereum_rpc.clone() + config.ethereum_rpc_api_key.as_str())
+            .parse()
+            .unwrap();
+
+        let anvil = Anvil::new().fork(fork_url).spawn();
+        let wallet: EthereumWallet = PrivateKeySigner::from(anvil.keys()[0].clone()).into();
+
+        let anvil_provider = ProviderBuilder::new()
+            .wallet(&wallet)
+            .connect_http(anvil.endpoint().parse().unwrap());
+
+        // TODO Add protocol adapter address to config.
+        let pa_instance = ProtocolAdapter::new(
+            address!("0x375920798465eb6b845AC5BF8580d69ce0Bda34a"),
+            &anvil_provider,
+        );
+
+        let fwd_instance = ERC20Forwarder::deploy(
+            &anvil_provider,
+            *pa_instance.address(),
+            B256::from_slice(SIMPLE_TRANSFER_ID.as_bytes()),
+            wallet.default_signer().address(),
+        )
+        .await
+        .unwrap();
+
+        // create a keychain with a private key
+        let alice = alice_keychain();
+
+        // test a simple mint transfer
+        test_mint(&config, &alice, &pa_instance).await;
+
+        // Note: Commented out because they don't work without the indexer.
+        // let bob = bob_keychain();
         // test a mint and transfer
-        test_mint_and_transfer().await;
+        //test_mint_and_transfer(&config, &alice, &bob).await;
 
         // test minting and then splitting
-        test_mint_and_split().await;
+        //test_mint_and_split(&config, &alice, &bob).await;
 
         // test minting and burning
-        test_mint_and_burn().await;
+        //test_mint_and_burn(&config, &alice).await;
 
         // test mint, split and then burn
-        test_mint_and_split_and_burn().await;
+        //test_mint_and_split_and_burn(&config, &alice, &bob).await;
     }
 
     ////////////////////////////////////////////////////////////////////////////
     // Scenarios
 
     /// Create a mint transaction, and then transfer the resource to another user.
-    async fn test_mint() {
-        let config = load_config().expect("failed to load config in test");
-        // create a keychain with a private key
-        let alice = alice_keychain();
-
+    async fn test_mint(
+        config: &AnomaPayConfig,
+        alice: &Keychain,
+        pa_instance: &ProtocolAdapter::ProtocolAdapterInstance<impl Provider>,
+    ) {
         // create a test mint transaction for alice
-        let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
-        println!("{:?}", minted_resource);
-        println!("{:?}", minted_resource.commitment());
+        let (minted_resource, tx) = create_test_mint_transaction(&config, &alice).await;
+        println!("Resource: {:?}", minted_resource);
+        println!("Commitment: {:?}", minted_resource.commitment());
 
-        // try and submit the transaction
-        submit_test_transaction(transaction, 0).await;
+        // submit the transaction
+        let receipt = pa_instance
+            .execute(tx.into())
+            .send()
+            .await
+            .expect("failed to submit transaction")
+            .get_receipt()
+            .await
+            .expect("failed to get receipt");
+
+        println!("receipt {:?}", receipt);
     }
 
     /// Create a mint transaction, and then transfer the resource to another user.
-    async fn test_mint_and_transfer() {
-        let config = load_config().expect("failed to load config in test");
-        // create a keychain with a private key
-        let alice = alice_keychain();
-        let bob = bob_keychain();
-
+    async fn test_mint_and_transfer(config: &AnomaPayConfig, alice: &Keychain, bob: &Keychain) {
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
         // try and submit the transaction
@@ -74,12 +120,7 @@ mod tests {
 
     /// Create a mint transaction, and then split the resource between the minter and another
     /// person.
-    async fn test_mint_and_split() {
-        let config = load_config().expect("failed to load config in test");
-        // create a keychain with a private key
-        let alice = alice_keychain();
-        let bob = bob_keychain();
-
+    async fn test_mint_and_split(config: &AnomaPayConfig, alice: &Keychain, bob: &Keychain) {
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
         // try and submit the transaction
@@ -95,12 +136,11 @@ mod tests {
 
     /// Create a mint transaction, and then split the resource between the minter and another
     /// person. Burn the remainder resource afterward.
-    async fn test_mint_and_split_and_burn() {
-        let config = load_config().expect("failed to load config in test");
-        // create a keychain with a private key
-        let alice = alice_keychain();
-        let bob = bob_keychain();
-
+    async fn test_mint_and_split_and_burn(
+        config: &AnomaPayConfig,
+        alice: &Keychain,
+        bob: &Keychain,
+    ) {
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
         // try and submit the transaction
@@ -119,11 +159,7 @@ mod tests {
     }
 
     /// Create a mint transaction, and then burn the resource.
-    async fn test_mint_and_burn() {
-        let config = load_config().expect("failed to load config in test");
-        // create a keychain with a private key
-        let alice = alice_keychain();
-
+    async fn test_mint_and_burn(config: &AnomaPayConfig, alice: &Keychain) {
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
         // try and submit the transaction
@@ -141,8 +177,8 @@ mod tests {
     /// Create a new transfer transaction, transferring the resource from sender to receiver.
     async fn create_test_transfer_transaction(
         config: &AnomaPayConfig,
-        sender: Keychain,
-        receiver: Keychain,
+        sender: &Keychain,
+        receiver: &Keychain,
         resource: Resource,
     ) -> Transaction {
         // create a transfer transaction

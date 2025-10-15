@@ -11,6 +11,7 @@ mod errors;
 
 mod evm;
 mod examples;
+mod forwarder;
 mod permit2;
 mod requests;
 mod tests;
@@ -54,25 +55,24 @@ fn load_config() -> Result<AnomaPayConfig, Box<dyn Error>> {
     let token_address =
         Address::parse_checksummed(token_address, None).map_err(|_| "TOKEN_ADDRESS invalid")?;
 
-    let permit2_address = env::var("PERMIT2_ADDRESS").map_err(|_| "USER_ADDRESS not set")?;
+    let permit2_address = env::var("PERMIT2_ADDRESS").map_err(|_| "PERMIT2_ADDRESS not set")?;
     let permit2_address =
         Address::parse_checksummed(permit2_address, None).map_err(|_| "PERMIT2_ADDRESS invalid")?;
 
-    let default_amount = env::var("DEFAULT_AMOUNT").map_err(|_| "USER_ADDRESS not set")?;
-    let default_amount: u8 = default_amount
-        .parse()
-        .map_err(|_| "DEFAULT_AMOUNT invalid")?;
+    let default_amount: u8 = 100;
+    let deadline = 1800000000;
 
-    let deadline = env::var("DEADLINE").map_err(|_| "USER_ADDRESS not set")?;
-    let deadline: u32 = deadline.parse().map_err(|_| "DEADLINE invalid")?;
-
-    let forwarder_address = env::var("FORWARDER_ADDRESS").map_err(|_| "USER_ADDRESS not set")?;
+    let forwarder_address =
+        env::var("FORWARDER_ADDRESS").map_err(|_| "FORWARDER_ADDRESS not set")?;
     let forwarder_address = Address::parse_checksummed(forwarder_address, None)
         .map_err(|_| "FORWARDER_ADDRESS invalid")?;
 
-    let ethereum_rpc = env::var("RPC_URL").map_err(|_| "RPC_URL not set")?;
-    let indexer_address = env::var("INDEXER_ADDRESS").map_err(|_| "INDEXER_ADDRESS not set")?;
-    let ethereum_rpc_api_key = env::var("API_KEY").map_err(|_| "API_KEY not set")?;
+    // TODO Combine `ethereum_rpc` and `ethereum_rpc_api_key` into a struct variable.
+    let ethereum_rpc = env::var("RPC_URL_ALCHEMY").map_err(|_| "RPC_URL_ALCHEMY not set")?;
+    let ethereum_rpc_api_key =
+        env::var("API_KEY_ALCHEMY").map_err(|_| "API_KEY_ALCHEMY not set")?;
+
+    let indexer_address = "http://localhost:4000".to_string(); //env::var("INDEXER_ADDRESS").map_err(|_| "INDEXER_ADDRESS not set")?;
 
     Ok(AnomaPayConfig {
         token_address,
