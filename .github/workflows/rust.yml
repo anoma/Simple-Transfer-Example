@@ -1,8 +1,8 @@
 name: Rust CI
 on:
   push:
-    branches:
-      - "*"
+    # branches:
+    #   - "*"
 jobs:
   lint-rust:
     name: Lint Rust
