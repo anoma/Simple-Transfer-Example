@@ -24,6 +24,7 @@ jobs:
         with:
           path: |
             target
+            ${{ runner.temp }}/.buildx-cache
           key: rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: rust-
 
@@ -44,7 +45,16 @@ jobs:
 
       # - name: check for undocumented functions
       #   run: RUSTFLAGS="-W missing_docs" cargo check
-
+  container-build:
+    name: Lint Rust
+    needs: lint-rust
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
@@ -67,6 +77,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=${{ runner.temp }}/.buildx-cache
+          cache-to: type=local,dest=${{ runner.temp }}/.buildx-cache-new,mode=max
 
       # This step generates an artifact attestation for the image, which is an unforgeable statement about where and how it was built. It increases supply chain security for people who consume the image. For more information, see [Using artifact attestations to establish provenance for builds](/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds).
       - name: Generate artifact attestation
