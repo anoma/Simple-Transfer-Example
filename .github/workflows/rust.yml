@@ -46,7 +46,7 @@ jobs:
       # - name: check for undocumented functions
       #   run: RUSTFLAGS="-W missing_docs" cargo check
   container-build:
-    name: Lint Rust
+    name: Build Container
     needs: lint-rust
     runs-on: ubuntu-latest
     permissions:
