@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::evm::evm_calls::pa_submit_and_await;
+    use crate::evm::evm_calls::pa_submit_transaction;
     use crate::examples::end_to_end::burn::create_burn_transaction;
     use crate::examples::end_to_end::mint::create_mint_transaction;
     use crate::examples::end_to_end::split::create_split_transaction;
@@ -10,34 +10,14 @@ mod tests {
     use crate::{load_config, AnomaPayConfig};
     use arm::resource::Resource;
     use arm::transaction::Transaction;
-
-    // time to wait for a transaction to be confirmed
-    pub const WAIT_TIME: u64 = 80;
-
-    /// Run all the scenarios in sequence.
-    /// Rust tests run in parallel by default and this gums up the works.
-    /// This functions forces the tests to run in sequence.
-    #[tokio::test]
-    async fn run_scenarios() {
-        // test a simple mint transfer
-        test_mint().await;
-
-        // test a mint and transfer
-        test_mint_and_transfer().await;
-
-        // test minting and then splitting
-        test_mint_and_split().await;
-
-        // test minting and burning
-        test_mint_and_burn().await;
-
-        // test mint, split and then burn
-        test_mint_and_split_and_burn().await;
-    }
-
+    use serial_test::serial;
+    use std::thread::sleep;
+    use std::time::Duration;
     ////////////////////////////////////////////////////////////////////////////
     // Scenarios
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then transfer the resource to another user.
     async fn test_mint() {
         let config = load_config().expect("failed to load config in test");
@@ -49,10 +29,13 @@ mod tests {
         println!("{:?}", minted_resource);
         println!("{:?}", minted_resource.commitment());
 
-        // try and submit the transaction
-        submit_test_transaction(transaction, 0).await;
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit mint transaction");
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then transfer the resource to another user.
     async fn test_mint_and_transfer() {
         let config = load_config().expect("failed to load config in test");
@@ -62,16 +45,25 @@ mod tests {
 
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, WAIT_TIME).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit mint transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(10));
 
         // create a test transfer function from bob to alice
         let transaction =
             create_test_transfer_transaction(&config, alice, bob, minted_resource).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, 0).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit transfer transaction");
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then split the resource between the minter and another
     /// person.
     async fn test_mint_and_split() {
@@ -82,17 +74,26 @@ mod tests {
 
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, WAIT_TIME).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit mint transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(10));
 
         // create a test split transaction function from bob to alice.
         // alice gets 1, and bob gets 1 too.
         let (_resource, _remainder_resource, transaction) =
             create_test_split_transaction(&config, &alice, &bob, minted_resource, 1).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, 0).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit split transaction");
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then split the resource between the minter and another
     /// person. Burn the remainder resource afterward.
     async fn test_mint_and_split_and_burn() {
@@ -103,21 +104,35 @@ mod tests {
 
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, WAIT_TIME).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit mint transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(10));
 
         // create a test split transaction from bob to alice
         let (_resource, remainder_resource, transaction) =
             create_test_split_transaction(&config, &alice, &bob, minted_resource, 1).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, WAIT_TIME).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit split transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(10));
 
         // create a burn transfer for alice's remainder resource.
         let transaction = create_test_burn_transaction(&config, &alice, remainder_resource).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, 0).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit burn transaction");
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then burn the resource.
     async fn test_mint_and_burn() {
         let config = load_config().expect("failed to load config in test");
@@ -126,13 +141,20 @@ mod tests {
 
         // create a test mint transaction for alice
         let (minted_resource, transaction) = create_test_mint_transaction(&config, &alice).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, WAIT_TIME).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit mint transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(10));
 
         // create a test burn transaction
         let transaction = create_test_burn_transaction(&config, &alice, minted_resource).await;
-        // try and submit the transaction
-        submit_test_transaction(transaction, 0).await;
+
+        pa_submit_transaction(transaction)
+            .await
+            .expect("failed to submit burn transaction");
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -209,12 +231,5 @@ mod tests {
         let (sent_resource, created_resource, transaction) = result.unwrap();
         assert!(transaction.clone().verify().is_ok());
         (sent_resource, created_resource, transaction)
-    }
-
-    /// Given a transaction, submits it to the PA and waits for it to complete.
-    async fn submit_test_transaction(transaction: Transaction, wait: u64) {
-        let result = pa_submit_and_await(transaction, wait).await;
-        println!("{:?}", result);
-        assert!(result.is_ok());
     }
 }
