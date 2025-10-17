@@ -1,5 +1,5 @@
 use crate::evm::approve::is_address_approved;
-use crate::evm::evm_calls::pa_submit_and_await;
+use crate::evm::evm_calls::pa_submit_transaction;
 use crate::examples::shared::parse_address;
 use crate::requests::approve::ApproveRequest;
 use crate::requests::burn::{burn_from_request, BurnRequest};
@@ -8,6 +8,7 @@ use crate::requests::split::{split_from_request, SplitRequest};
 use crate::requests::transfer::{transfer_from_request, TransferRequest};
 use crate::requests::Expand;
 use crate::AnomaPayConfig;
+
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::Header;
 use rocket::serde::json::{json, to_value, Json};
@@ -57,7 +58,7 @@ pub async fn mint(payload: Json<CreateRequest>, config: &State<AnomaPayConfig>) 
     };
 
     // submit the transaction
-    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
+    let Ok(tx_hash) = pa_submit_transaction(transaction).await else {
         return Json(json!({"error": "failed to submit mint transaction"}));
     };
 
@@ -76,12 +77,12 @@ pub async fn transfer(payload: Json<TransferRequest>) -> Json<Value> {
     };
 
     // submit the transaction
-    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
+    let Ok(receipt) = pa_submit_transaction(transaction).await else {
         return Json(json!({"error": "failed to submit transfer transaction"}));
     };
 
     // create the response
-    Json(json!({"transaction_hash": tx_hash, "resource": created_resource.simplify()}))
+    Json(json!({"receipt": receipt, "resource": created_resource.simplify()}))
 }
 
 /// Handles a request from the user to burn a resource.
@@ -97,12 +98,12 @@ pub async fn burn(payload: Json<BurnRequest>, config: &State<AnomaPayConfig>) ->
     };
 
     // submit the transaction
-    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
+    let Ok(receipt) = pa_submit_transaction(transaction).await else {
         return Json(json!({"error": "failed to submit burn transaction"}));
     };
 
     // create the response
-    Json(json!({"transaction_hash": tx_hash}))
+    Json(json!({"receipt": receipt}))
 }
 
 /// Handles a request from the user to split a resource.
@@ -116,12 +117,12 @@ pub async fn split(payload: Json<SplitRequest>) -> Json<Value> {
     };
 
     // submit the transaction
-    let Ok(tx_hash) = pa_submit_and_await(transaction, 0).await else {
+    let Ok(receipt) = pa_submit_transaction(transaction).await else {
         return Json(json!({"error": "failed to submit split transaction"}));
     };
 
     // create the response
-    Json(json!({"transaction_hash": tx_hash}))
+    Json(json!({"receipt": receipt}))
 }
 
 #[catch(422)]
