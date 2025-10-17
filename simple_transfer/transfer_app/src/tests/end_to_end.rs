@@ -51,7 +51,7 @@ mod tests {
             .expect("failed to submit mint transaction");
 
         // Give the indexer time to pick up the transaction. TODO! Remove in the future.
-        sleep(Duration::from_secs(6));
+        sleep(Duration::from_secs(10));
 
         // create a test transfer function from bob to alice
         let transaction =
@@ -80,7 +80,7 @@ mod tests {
             .expect("failed to submit mint transaction");
 
         // Give the indexer time to pick up the transaction. TODO! Remove in the future.
-        sleep(Duration::from_secs(6));
+        sleep(Duration::from_secs(10));
 
         // create a test split transaction function from bob to alice.
         // alice gets 1, and bob gets 1 too.
@@ -110,7 +110,7 @@ mod tests {
             .expect("failed to submit mint transaction");
 
         // Give the indexer time to pick up the transaction. TODO! Remove in the future.
-        sleep(Duration::from_secs(6));
+        sleep(Duration::from_secs(10));
 
         // create a test split transaction from bob to alice
         let (_resource, remainder_resource, transaction) =
@@ -121,7 +121,7 @@ mod tests {
             .expect("failed to submit split transaction");
 
         // Give the indexer time to pick up the transaction. TODO! Remove in the future.
-        sleep(Duration::from_secs(6));
+        sleep(Duration::from_secs(10));
 
         // create a burn transfer for alice's remainder resource.
         let transaction = create_test_burn_transaction(&config, &alice, remainder_resource).await;
@@ -147,7 +147,7 @@ mod tests {
             .expect("failed to submit mint transaction");
 
         // Give the indexer time to pick up the transaction. TODO! Remove in the future.
-        sleep(Duration::from_secs(6));
+        sleep(Duration::from_secs(10));
 
         // create a test burn transaction
         let transaction = create_test_burn_transaction(&config, &alice, minted_resource).await;
