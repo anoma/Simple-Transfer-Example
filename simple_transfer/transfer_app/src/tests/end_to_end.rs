@@ -6,20 +6,18 @@ mod tests {
     use crate::examples::end_to_end::split::create_split_transaction;
     use crate::examples::end_to_end::transfer::create_transfer_transaction;
     use crate::tests::fixtures::alice_keychain;
-    use crate::tests::forwarder::ERC20Forwarder;
     use crate::user::Keychain;
     use crate::{load_config, AnomaPayConfig};
-    use evm_protocol_adapter_bindings::conversion::ProtocolAdapter;
+    use evm_protocol_adapter_bindings::ProtocolAdapter;
 
     use alloy::network::EthereumWallet;
     use alloy::node_bindings::Anvil;
-    use alloy::primitives::{address, B256};
+    use alloy::primitives::address;
     use alloy::providers::{Provider, ProviderBuilder};
     use alloy::signers::local::PrivateKeySigner;
     use arm::resource::Resource;
     use arm::transaction::Transaction;
     use reqwest::Url;
-    use transfer_library::SIMPLE_TRANSFER_ID;
 
     // time to wait for a transaction to be confirmed
 
@@ -47,14 +45,15 @@ mod tests {
             &anvil_provider,
         );
 
-        let fwd_instance = ERC20Forwarder::deploy(
+        // TODO Use this forwarder instead of the one in the config.
+        /*let fwd_instance = ERC20Forwarder::deploy(
             &anvil_provider,
             *pa_instance.address(),
             B256::from_slice(SIMPLE_TRANSFER_ID.as_bytes()),
             wallet.default_signer().address(),
         )
         .await
-        .unwrap();
+        .unwrap();*/
 
         // create a keychain with a private key
         let alice = alice_keychain();
@@ -211,7 +210,7 @@ mod tests {
         (minted_resource, transaction)
     }
 
-    /// Create a burn tranasction for the given resource.
+    /// Create a burn transaction for the given resource.
     async fn create_test_burn_transaction(
         config: &AnomaPayConfig,
         burner: &Keychain,

@@ -25,7 +25,7 @@ risc0-zkvm = { version = "3.0.3", default-features = false, features = ["std",
 ] }
 hex = "0.4"
 lazy_static = "1.5.0"
-evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", rev = "3b2277eede9fee20c92e86c005e67fcd0e13b46b" }
+evm_protocol_adapter_bindings = { git = "https://github.com/anoma/evm-protocol-adapter", rev = "f475e94d114ab93d1bfea0eb0656a81dbcb0cb96" }
 tokio = "1.47.1"
 alloy = { version = "1.0.23", features = ["full"] }
 eyre = "0.6.12"
