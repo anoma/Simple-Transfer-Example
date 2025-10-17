@@ -11,7 +11,8 @@ mod tests {
     use arm::resource::Resource;
     use arm::transaction::Transaction;
     use serial_test::serial;
-
+    use std::thread::sleep;
+    use std::time::Duration;
     ////////////////////////////////////////////////////////////////////////////
     // Scenarios
 
@@ -49,6 +50,9 @@ mod tests {
             .await
             .expect("failed to submit mint transaction");
 
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(6));
+
         // create a test transfer function from bob to alice
         let transaction =
             create_test_transfer_transaction(&config, alice, bob, minted_resource).await;
@@ -74,6 +78,9 @@ mod tests {
         pa_submit_transaction(transaction)
             .await
             .expect("failed to submit mint transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(6));
 
         // create a test split transaction function from bob to alice.
         // alice gets 1, and bob gets 1 too.
@@ -102,6 +109,9 @@ mod tests {
             .await
             .expect("failed to submit mint transaction");
 
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(6));
+
         // create a test split transaction from bob to alice
         let (_resource, remainder_resource, transaction) =
             create_test_split_transaction(&config, &alice, &bob, minted_resource, 1).await;
@@ -109,6 +119,9 @@ mod tests {
         pa_submit_transaction(transaction)
             .await
             .expect("failed to submit split transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(6));
 
         // create a burn transfer for alice's remainder resource.
         let transaction = create_test_burn_transaction(&config, &alice, remainder_resource).await;
@@ -132,6 +145,9 @@ mod tests {
         pa_submit_transaction(transaction)
             .await
             .expect("failed to submit mint transaction");
+
+        // Give the indexer time to pick up the transaction. TODO! Remove in the future.
+        sleep(Duration::from_secs(6));
 
         // create a test burn transaction
         let transaction = create_test_burn_transaction(&config, &alice, minted_resource).await;

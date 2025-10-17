@@ -1,5 +1,5 @@
 use crate::evm::errors::EvmError;
-use crate::evm::errors::EvmError::IndexerError;
+use crate::evm::errors::EvmError::{EvmSubmitError, IndexerError};
 use alloy::hex::ToHexExt;
 use alloy::network::ReceiptResponse;
 use alloy::rpc::types::TransactionReceipt;
@@ -26,6 +26,10 @@ pub async fn pa_submit_transaction(
         .execute(tx)
         .send()
         .await
+        .map_err(|err| {
+            println!("Failed to submit transaction {:?}", err);
+            EvmSubmitError
+        })
         .expect("Failed to submit transaction")
         .get_receipt()
         .await

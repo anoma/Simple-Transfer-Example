@@ -8,7 +8,6 @@ use crate::requests::split::{split_from_request, SplitRequest};
 use crate::requests::transfer::{transfer_from_request, TransferRequest};
 use crate::requests::Expand;
 use crate::AnomaPayConfig;
-
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::Header;
 use rocket::serde::json::{json, to_value, Json};
