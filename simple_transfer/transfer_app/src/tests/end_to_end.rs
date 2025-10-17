@@ -10,34 +10,16 @@ mod tests {
     use crate::{load_config, AnomaPayConfig};
     use arm::resource::Resource;
     use arm::transaction::Transaction;
+    use serial_test::serial;
 
     // time to wait for a transaction to be confirmed
     pub const WAIT_TIME: u64 = 80;
 
-    /// Run all the scenarios in sequence.
-    /// Rust tests run in parallel by default and this gums up the works.
-    /// This functions forces the tests to run in sequence.
-    #[tokio::test]
-    async fn run_scenarios() {
-        // test a simple mint transfer
-        test_mint().await;
-
-        // test a mint and transfer
-        test_mint_and_transfer().await;
-
-        // test minting and then splitting
-        test_mint_and_split().await;
-
-        // test minting and burning
-        test_mint_and_burn().await;
-
-        // test mint, split and then burn
-        test_mint_and_split_and_burn().await;
-    }
-
     ////////////////////////////////////////////////////////////////////////////
     // Scenarios
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then transfer the resource to another user.
     async fn test_mint() {
         let config = load_config().expect("failed to load config in test");
@@ -53,6 +35,8 @@ mod tests {
         submit_test_transaction(transaction, 0).await;
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then transfer the resource to another user.
     async fn test_mint_and_transfer() {
         let config = load_config().expect("failed to load config in test");
@@ -72,6 +56,8 @@ mod tests {
         submit_test_transaction(transaction, 0).await;
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then split the resource between the minter and another
     /// person.
     async fn test_mint_and_split() {
@@ -93,6 +79,8 @@ mod tests {
         submit_test_transaction(transaction, 0).await;
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then split the resource between the minter and another
     /// person. Burn the remainder resource afterward.
     async fn test_mint_and_split_and_burn() {
@@ -118,6 +106,8 @@ mod tests {
         submit_test_transaction(transaction, 0).await;
     }
 
+    #[tokio::test]
+    #[serial]
     /// Create a mint transaction, and then burn the resource.
     async fn test_mint_and_burn() {
         let config = load_config().expect("failed to load config in test");
